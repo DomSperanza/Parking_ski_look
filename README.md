@@ -21,7 +21,7 @@ Imagine being able to sit back with hot cocoa while your computer scans resort p
 1. **Clone the Repo:**
 
    ```bash
-   git clone https://github.com/your_username/parking-scraper.git
+   git clone https://github.com/DomSperanza/Parking_ski_look.git
    cd parking-scraper
    ```
 
