@@ -47,6 +47,9 @@ def main():
     elif args.mode == "webapp":
         from webapp.app import create_app
         app = create_app()
+        print(f"🚀 Starting Ski Parking Monitor Web App...")
+        print(f"📍 Server running at: http://{args.host}:{args.port}")
+        print(f"🔧 Debug mode: {'ON' if args.debug else 'OFF'}")
         app.run(host=args.host, port=args.port, debug=args.debug)
 
 if __name__ == "__main__":

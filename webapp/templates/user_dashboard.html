@@ -1,0 +1,270 @@
+{% extends "base.html" %} {% block title %}Your Selections - Ski Parking
+Monitor{% endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="text-center mb-4">
+      <h2 class="fw-bold text-primary">
+        <i class="fas fa-user me-2"></i>
+        Your Parking Selections
+      </h2>
+      <p class="text-muted">
+        Here are your current parking monitoring selections for
+        <strong>{{ email }}</strong>
+      </p>
+    </div>
+
+    {% if selections %}
+    <!-- Selections Summary -->
+    <div class="card shadow-lg border-success mb-4">
+      <div class="card-header bg-success text-white">
+        <h5 class="mb-0">
+          <i class="fas fa-list me-2"></i>
+          Active Monitoring Jobs
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          {% for selection in selections %}
+          <div class="col-md-6 mb-3">
+            <div class="card border-primary h-100">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <h6 class="card-title text-primary mb-0">
+                    <i class="fas fa-mountain me-2"></i>
+                    {{ selection.resort_name }}
+                  </h6>
+                  <button 
+                    type="button" 
+                    class="btn btn-outline-danger btn-sm" 
+                    onclick="deleteJob({{ selection.job_id }})"
+                    title="Delete this monitoring job"
+                  >
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </div>
+                <p class="card-text">
+                  <strong>Date:</strong> {{ selection.target_date }}<br />
+                  <strong>Status:</strong>
+                  <span
+                    class="badge bg-{{
+                      'success' if selection.status == 'active' else 'secondary'
+                    }}"
+                  >
+                    {{ selection.status.title() }}
+                  </span>
+                </p>
+                <small class="text-muted">
+                  <i class="fas fa-clock me-1"></i>
+                  Created: {{ selection.created_at }}
+                </small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Resort Links -->
+    <div class="card shadow-lg border-0 mb-4">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+          <i class="fas fa-external-link-alt me-2"></i>
+          Quick Links to Resort Parking
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          {% set unique_resorts = [] %}
+          {% for selection in selections %}
+            {% if selection.resort_name not in unique_resorts %}
+              {% set _ = unique_resorts.append(selection.resort_name) %}
+              <div class="col-md-6 mb-3">
+                <a
+                  href="{{ selection.resort_url }}"
+                  target="_blank"
+                  class="btn btn-outline-primary w-100"
+                >
+                  <i class="fas fa-external-link-alt me-2"></i>
+                  Book {{ selection.resort_name }} Parking
+                </a>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% else %}
+    <!-- No Selections -->
+    <div class="card shadow-lg border-warning">
+      <div class="card-body text-center p-5">
+        <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+        <h4 class="text-warning">No Active Monitoring</h4>
+        <p class="text-muted">
+          You don't have any active parking monitoring jobs. Start monitoring
+          parking availability at your favorite resorts!
+        </p>
+        <a href="{{ url_for('home') }}" class="btn btn-primary btn-lg">
+          <i class="fas fa-plus me-2"></i>
+          Start Monitoring
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Actions -->
+    <div class="text-center mt-4">
+      <a href="{{ url_for('lookup') }}" class="btn btn-outline-secondary me-2">
+        <i class="fas fa-search me-2"></i>
+        Check Again
+      </a>
+      <a href="{{ url_for('home') }}" class="btn btn-primary me-2">
+        <i class="fas fa-home me-2"></i>
+        Back to Home
+      </a>
+      <button 
+        type="button" 
+        class="btn btn-outline-danger" 
+        id="deleteAccountBtn"
+      >
+        <i class="fas fa-trash me-2"></i>
+        Delete Account
+      </button>
+    </div>
+
+    <!-- Security Info -->
+    <div class="card mt-4 border-0 bg-light">
+      <div class="card-body text-center">
+        <h6 class="text-success">
+          <i class="fas fa-shield-alt me-2"></i>
+          Your Data is Secure
+        </h6>
+        <p class="text-muted small mb-0">
+          Your PIN is never stored in our database. We use secure SHA-256
+          hashing to verify your identity without storing sensitive information.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="deleteModalLabel">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          Delete Account
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-warning">
+          <i class="fas fa-warning me-2"></i>
+          <strong>Warning:</strong> This action cannot be undone!
+        </div>
+        <p>Are you sure you want to delete your account and all monitoring jobs?</p>
+        <p class="text-muted small">
+          This will permanently remove:
+          <ul class="small">
+            <li>Your account information</li>
+            <li>All active monitoring jobs</li>
+            <li>All notification history</li>
+          </ul>
+        </p>
+        <p class="text-danger fw-bold">
+          You will need to create a new account if you want to use this service again.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-times me-1"></i>
+          Cancel
+        </button>
+        <form method="POST" action="{{ url_for('delete_account') }}" class="d-inline">
+          <input type="hidden" name="user_id" value="{{ user_id }}">
+          <button type="submit" class="btn btn-danger" id="confirmDeleteBtn">
+            <i class="fas fa-trash me-1"></i>
+            Yes, Delete My Account
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    // Add click tracking for external links
+    const externalLinks = document.querySelectorAll('a[target="_blank"]');
+    externalLinks.forEach((link) => {
+      link.addEventListener("click", function () {
+        // You could add analytics tracking here
+        console.log("User clicked external link:", this.href);
+      });
+    });
+
+    // Delete account functionality - simplified for logged-in users
+    const deleteModal = document.getElementById('deleteModal');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+
+    // Check if required elements exist
+    if (!deleteModal || !confirmDeleteBtn) {
+      console.error('Missing required elements for delete account functionality');
+      return;
+    }
+
+    // Initialize Bootstrap modal
+    const deleteModalInstance = new bootstrap.Modal(deleteModal);
+
+    // Handle delete button click - show confirmation directly
+    const deleteBtn = document.getElementById('deleteAccountBtn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        console.log('Delete account button clicked'); // Debug log
+        deleteModalInstance.show();
+      });
+    }
+
+    // Handle final delete confirmation
+    confirmDeleteBtn.addEventListener('click', function() {
+      // Add loading state
+      this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
+      this.disabled = true;
+      
+      // Submit the form
+      this.closest('form').submit();
+    });
+
+    // Reset modal when hidden
+    deleteModal.addEventListener('hidden.bs.modal', function() {
+      confirmDeleteBtn.innerHTML = '<i class="fas fa-trash me-1"></i>Yes, Delete My Account';
+      confirmDeleteBtn.disabled = false;
+    });
+
+    // Global function to delete individual jobs
+    window.deleteJob = function(jobId) {
+      if (confirm('Are you sure you want to delete this monitoring job?')) {
+        // Create a form to submit the deletion
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("delete_job") }}';
+        
+        // Add job ID field
+        const jobIdField = document.createElement('input');
+        jobIdField.type = 'hidden';
+        jobIdField.name = 'job_id';
+        jobIdField.value = jobId;
+        
+        form.appendChild(jobIdField);
+        document.body.appendChild(form);
+        form.submit();
+      }
+    };
+  });
+</script>
+{% endblock %}

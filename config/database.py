@@ -180,6 +180,7 @@ def get_active_monitoring_jobs():
                 j.job_id,
                 j.user_id,
                 j.target_date,
+                j.resort_id,
                 r.resort_name,
                 r.resort_url,
                 r.available_color,
@@ -199,6 +200,100 @@ def get_active_monitoring_jobs():
     
     except Exception as e:
         logger.error(f"Error fetching active jobs: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_user_selections(user_id):
+    """
+    Get user's resort and date selections from monitoring jobs.
+    
+    Args:
+        user_id (int): User ID to query
+        
+    Returns:
+        list: List of dictionaries with resort and date information
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT 
+                mj.job_id,
+                mj.target_date,
+                r.resort_name,
+                r.resort_url,
+                mj.status,
+                mj.created_at
+            FROM monitoring_jobs mj
+            JOIN resorts r ON mj.resort_id = r.resort_id
+            WHERE mj.user_id = ?
+            ORDER BY r.resort_name, mj.target_date
+        ''', (user_id,))
+        
+        jobs = cursor.fetchall()
+        return [dict(job) for job in jobs]
+    
+    except Exception as e:
+        logger.error(f"Error fetching user selections: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_all_users_with_selections():
+    """
+    Get all users with their resort and date selections.
+    Note: PIN field now contains SHA-256 hash, not raw PIN.
+    
+    Returns:
+        list: List of dictionaries with user and selection information
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT 
+                u.user_id,
+                u.email,
+                u.pin as pin_hash,
+                u.created_at,
+                r.resort_name,
+                mj.target_date,
+                mj.status as job_status
+            FROM users u
+            LEFT JOIN monitoring_jobs mj ON u.user_id = mj.user_id
+            LEFT JOIN resorts r ON mj.resort_id = r.resort_id
+            ORDER BY u.user_id, r.resort_name, mj.target_date
+        ''')
+        
+        results = cursor.fetchall()
+        
+        # Group by user
+        users = {}
+        for row in results:
+            user_id = row['user_id']
+            if user_id not in users:
+                users[user_id] = {
+                    'user_id': user_id,
+                    'email': row['email'],
+                    'pin_hash': row['pin_hash'][:16] + '...',  # Show only first 16 chars of hash
+                    'created_at': row['created_at'],
+                    'selections': []
+                }
+            
+            if row['resort_name']:  # Only add if there are selections
+                users[user_id]['selections'].append({
+                    'resort_name': row['resort_name'],
+                    'target_date': row['target_date'],
+                    'job_status': row['job_status']
+                })
+        
+        return list(users.values())
+    
+    except Exception as e:
+        logger.error(f"Error fetching all users with selections: {e}")
         return []
     finally:
         conn.close()
@@ -365,6 +460,166 @@ def get_user_monitoring_jobs(user_id):
     except Exception as e:
         logger.error(f"Error fetching user jobs: {e}")
         return []
+    finally:
+        conn.close()
+
+def update_job_last_checked(job_id, timestamp=None):
+    """
+    Update the last_checked timestamp for a monitoring job.
+    
+    Args:
+        job_id (int): Job ID to update
+        timestamp (datetime, optional): Timestamp to set. Defaults to current time.
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    if timestamp is None:
+        timestamp = datetime.now()
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            UPDATE monitoring_jobs
+            SET last_checked = ?
+            WHERE job_id = ?
+        ''', (timestamp, job_id))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating job last_checked: {e}")
+        return False
+    finally:
+        conn.close()
+
+def increment_job_success_count(job_id):
+    """
+    Increment the success_count for a monitoring job.
+    
+    Args:
+        job_id (int): Job ID to update
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            UPDATE monitoring_jobs
+            SET success_count = success_count + 1
+            WHERE job_id = ?
+        ''', (job_id,))
+        
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error incrementing job success count: {e}")
+        return False
+    finally:
+        conn.close()
+
+def create_notification(job_id, user_id, resort_name, available_date):
+    """
+    Create a notification record in the database.
+    
+    Args:
+        job_id (int): Monitoring job ID
+        user_id (int): User ID
+        resort_name (str): Name of the resort
+        available_date (str): Available date in YYYY-MM-DD format
+    
+    Returns:
+        int: Notification ID if successful, None otherwise
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT INTO notifications (user_id, job_id, resort_name, available_date, delivery_status)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, job_id, resort_name, available_date, 'sent'))
+        
+        conn.commit()
+        notification_id = cursor.lastrowid
+        logger.info(f"Created notification {notification_id} for job {job_id}")
+        return notification_id
+    except Exception as e:
+        logger.error(f"Error creating notification: {e}")
+        return None
+    finally:
+        conn.close()
+
+def get_notification_history(user_id, limit=50):
+    """
+    Get notification history for a user.
+    
+    Args:
+        user_id (int): User ID
+        limit (int): Maximum number of notifications to return
+    
+    Returns:
+        list: List of notification records
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            SELECT 
+                notification_id,
+                job_id,
+                sent_at,
+                delivery_status,
+                resort_name,
+                available_date
+            FROM notifications
+            WHERE user_id = ?
+            ORDER BY sent_at DESC
+            LIMIT ?
+        ''', (user_id, limit))
+        
+        notifications = cursor.fetchall()
+        return [dict(notif) for notif in notifications]
+    except Exception as e:
+        logger.error(f"Error fetching notification history: {e}")
+        return []
+    finally:
+        conn.close()
+
+def check_recent_notification(job_id, minutes=30):
+    """
+    Check if a notification was sent recently for this job.
+    
+    Args:
+        job_id (int): Job ID to check
+        minutes (int): Number of minutes to look back
+    
+    Returns:
+        bool: True if notification sent recently, False otherwise
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # SQLite datetime subtraction syntax
+        cursor.execute('''
+            SELECT notification_id
+            FROM notifications
+            WHERE job_id = ?
+            AND sent_at > datetime('now', '-' || ? || ' minutes')
+        ''', (job_id, str(minutes)))
+        
+        result = cursor.fetchone()
+        return result is not None
+    except Exception as e:
+        logger.error(f"Error checking recent notification: {e}")
+        return False
     finally:
         conn.close()
 

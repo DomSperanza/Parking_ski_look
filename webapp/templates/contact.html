@@ -1,0 +1,253 @@
+{% extends "base.html" %} {% block title %}Contact Information - Ski Parking
+Monitor{% endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="text-center mb-4">
+      <h2 class="fw-bold text-primary">
+        <i class="fas fa-envelope me-2"></i>
+        Contact Information
+      </h2>
+      <p class="text-muted">
+        Enter your email address to receive parking alerts.
+      </p>
+    </div>
+
+    <!-- Summary of Selection -->
+    <div class="card mb-4 border-primary">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+          <i class="fas fa-list me-2"></i>
+          Your Selection Summary
+        </h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <h6 class="text-primary">Selected Resorts:</h6>
+            <ul class="list-unstyled">
+              {% for resort in resorts %}
+              <li><i class="fas fa-skiing me-2"></i>{{ resort }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          <div class="col-md-6">
+            <h6 class="text-primary">Selected Dates:</h6>
+            <div class="row">
+              {% for date in dates %}
+              <div class="col-12 mb-1">
+                <span class="badge bg-primary">
+                  <i class="fas fa-calendar me-1"></i>
+                  {{ date }}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+            <small class="text-muted">
+              <i class="fas fa-clock me-1"></i>
+              All times in Mountain Time (Salt Lake City)
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact Form -->
+    <div class="card shadow-lg border-0">
+      <div class="card-body p-5">
+        <form method="POST">
+          <!-- Hidden fields to preserve selection -->
+          {% for resort in resorts %}
+          <input type="hidden" name="resorts" value="{{ resort }}" />
+          {% endfor %} {% for date in dates %}
+          <input type="hidden" name="dates" value="{{ date }}" />
+          {% endfor %}
+
+          <div class="mb-4">
+            <label for="email" class="form-label fw-bold">
+              <i class="fas fa-envelope me-2 text-primary"></i>
+              Email Address
+            </label>
+            <input
+              type="email"
+              class="form-control form-control-lg"
+              id="email"
+              name="email"
+              placeholder="your.email@example.com"
+              required
+            />
+            <div class="form-text">
+              We'll send parking alerts to this email address.
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label for="pin" class="form-label fw-bold">
+              <i class="fas fa-key me-2 text-primary"></i>
+              6-Digit PIN
+            </label>
+            <input
+              type="text"
+              class="form-control form-control-lg"
+              id="pin"
+              name="pin"
+              placeholder="123456"
+              maxlength="6"
+              pattern="[0-9]{6}"
+              required
+            />
+            <div class="form-text">
+              Create a 6-digit PIN for account access (numbers only).
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <label for="email_confirm" class="form-label fw-bold">
+              <i class="fas fa-check-circle me-2 text-primary"></i>
+              Confirm Email Address
+            </label>
+            <input
+              type="email"
+              class="form-control form-control-lg"
+              id="email_confirm"
+              name="email_confirm"
+              placeholder="your.email@example.com"
+              required
+            />
+            <div class="form-text">Please re-enter your email to confirm.</div>
+          </div>
+
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            <strong>Privacy Notice:</strong> We only use your email to send
+            parking alerts. We never share your information with third parties.
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="fas fa-paper-plane me-2"></i>
+              Start Monitoring Parking
+            </button>
+            <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+              <i class="fas fa-arrow-left me-2"></i>
+              Back to Resort Selection
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- How It Works -->
+    <div class="card mt-4 border-0 bg-light">
+      <div class="card-body">
+        <h5 class="text-center mb-3">
+          <i class="fas fa-cogs me-2 text-primary"></i>
+          How It Works
+        </h5>
+        <div class="row text-center">
+          <div class="col-md-4 mb-3">
+            <div class="bg-white rounded p-3 h-100">
+              <i class="fas fa-search fa-2x text-primary mb-2"></i>
+              <h6>Monitor</h6>
+              <small class="text-muted"
+                >We continuously check parking availability at your selected
+                resorts.</small
+              >
+            </div>
+          </div>
+          <div class="col-md-4 mb-3">
+            <div class="bg-white rounded p-3 h-100">
+              <i class="fas fa-bell fa-2x text-primary mb-2"></i>
+              <h6>Alert</h6>
+              <small class="text-muted"
+                >The moment parking becomes available, we send you an instant
+                email.</small
+              >
+            </div>
+          </div>
+          <div class="col-md-4 mb-3">
+            <div class="bg-white rounded p-3 h-100">
+              <i class="fas fa-skiing fa-2x text-primary mb-2"></i>
+              <h6>Ski</h6>
+              <small class="text-muted"
+                >Book your parking and enjoy your day on the slopes!</small
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const emailInput = document.getElementById("email");
+    const emailConfirmInput = document.getElementById("email_confirm");
+    const pinInput = document.getElementById("pin");
+    const form = document.querySelector("form");
+
+    // Real-time email validation
+    function validateEmails() {
+      const email = emailInput.value;
+      const emailConfirm = emailConfirmInput.value;
+
+      if (email && emailConfirm) {
+        if (email === emailConfirm) {
+          emailConfirmInput.classList.remove("is-invalid");
+          emailConfirmInput.classList.add("is-valid");
+        } else {
+          emailConfirmInput.classList.remove("is-valid");
+          emailConfirmInput.classList.add("is-invalid");
+        }
+      }
+    }
+
+    // PIN validation
+    function validatePin() {
+      const pin = pinInput.value;
+      const pinRegex = /^[0-9]{6}$/;
+
+      if (pin) {
+        if (pinRegex.test(pin)) {
+          pinInput.classList.remove("is-invalid");
+          pinInput.classList.add("is-valid");
+        } else {
+          pinInput.classList.remove("is-valid");
+          pinInput.classList.add("is-invalid");
+        }
+      }
+    }
+
+    emailInput.addEventListener("input", validateEmails);
+    emailConfirmInput.addEventListener("input", validateEmails);
+    pinInput.addEventListener("input", validatePin);
+
+    // Form submission validation
+    form.addEventListener("submit", function (e) {
+      const email = emailInput.value;
+      const emailConfirm = emailConfirmInput.value;
+      const pin = pinInput.value;
+
+      if (email !== emailConfirm) {
+        e.preventDefault();
+        alert("Email addresses do not match. Please check and try again.");
+        emailConfirmInput.focus();
+        return;
+      }
+
+      if (!email || !emailConfirm) {
+        e.preventDefault();
+        alert("Please fill in both email fields.");
+        return;
+      }
+
+      if (!pin || !/^[0-9]{6}$/.test(pin)) {
+        e.preventDefault();
+        alert("Please enter a valid 6-digit PIN (numbers only).");
+        pinInput.focus();
+        return;
+      }
+    });
+  });
+</script>
+{% endblock %}

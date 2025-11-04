@@ -72,3 +72,6 @@ coverage.xml
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+#all .csv
+*.csv

@@ -1,0 +1,178 @@
+{% extends "base.html" %} {% block title %}Thank You - Ski Parking Monitor{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="text-center mb-5">
+      <div class="mb-4">
+        <i class="fas fa-check-circle fa-5x text-success"></i>
+      </div>
+      <h1 class="display-4 fw-bold text-success">Success!</h1>
+      <p class="lead text-muted">
+        Your parking monitoring setup is complete. We'll start watching for
+        parking availability at your selected resorts and dates.
+      </p>
+    </div>
+
+    <!-- Success Details -->
+    <div class="card shadow-lg border-success mb-4">
+      <div class="card-header bg-success text-white">
+        <h4 class="mb-0">
+          <i class="fas fa-info-circle me-2"></i>
+          What Happens Next?
+        </h4>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <h6 class="text-success">Monitoring Active</h6>
+            <ul class="list-unstyled">
+              <li>
+                <i class="fas fa-check text-success me-2"></i>24/7 parking
+                monitoring
+              </li>
+              <li>
+                <i class="fas fa-check text-success me-2"></i>Instant email
+                alerts
+              </li>
+              <li>
+                <i class="fas fa-check text-success me-2"></i>Multiple resort
+                coverage
+              </li>
+            </ul>
+          </div>
+          <div class="col-md-6">
+            <h6 class="text-success">What to Expect</h6>
+            <ul class="list-unstyled">
+              <li>
+                <i class="fas fa-envelope text-primary me-2"></i>Email
+                notifications when parking opens
+              </li>
+              <li>
+                <i class="fas fa-clock text-primary me-2"></i>Real-time
+                availability updates
+              </li>
+              <li>
+                <i class="fas fa-skiing text-primary me-2"></i>Direct links to
+                book parking
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Donation Section -->
+    <div class="card shadow-lg border-0 mb-4">
+      <div class="card-body p-5 text-center">
+        <h3 class="text-primary mb-3">
+          <i class="fas fa-coffee me-2"></i>
+          Support This Service
+        </h3>
+        <p class="text-muted mb-4">
+          This service is provided free of charge. If you find it helpful,
+          consider buying me a cup of coffee to help keep the service running!
+        </p>
+
+        <div class="row justify-content-center">
+          <div class="col-md-8">
+            <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+              <button class="btn btn-warning btn-lg me-md-2" id="donateBtn">
+                <i class="fas fa-coffee me-2"></i>
+                Buy Me a Coffee
+              </button>
+              <button
+                class="btn btn-outline-primary btn-lg"
+                onclick="window.location.href='{{ url_for('home') }}'"
+              >
+                <i class="fas fa-home me-2"></i>
+                Back to Home
+              </button>
+            </div>
+
+            <div class="mt-3">
+              <small class="text-muted">
+                <i class="fas fa-heart text-danger me-1"></i>
+                Every donation helps keep this service free for everyone
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tips Section -->
+    <div class="card border-0 bg-light">
+      <div class="card-body">
+        <h5 class="text-center mb-3">
+          <i class="fas fa-lightbulb me-2 text-warning"></i>
+          Pro Tips for Better Results
+        </h5>
+        <div class="row">
+          <div class="col-md-4 text-center mb-3">
+            <i class="fas fa-mobile-alt fa-2x text-primary mb-2"></i>
+            <h6>Enable Notifications</h6>
+            <small class="text-muted"
+              >Make sure email notifications are enabled on your phone for
+              instant alerts.</small
+            >
+          </div>
+          <div class="col-md-4 text-center mb-3">
+            <i class="fas fa-clock fa-2x text-primary mb-2"></i>
+            <h6>Act Fast</h6>
+            <small class="text-muted"
+              >Parking spots can fill up quickly, so book as soon as you get the
+              alert.</small
+            >
+          </div>
+          <div class="col-md-4 text-center mb-3">
+            <i class="fas fa-calendar-check fa-2x text-primary mb-2"></i>
+            <h6>Plan Ahead</h6>
+            <small class="text-muted"
+              >Set up monitoring for multiple dates to increase your chances of
+              success.</small
+            >
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact Support -->
+    <div class="text-center mt-4">
+      <p class="text-muted">
+        Questions or issues?
+        <a
+          href="mailto:support@skiparkingmonitor.com"
+          class="text-decoration-none"
+        >
+          <i class="fas fa-envelope me-1"></i>Contact Support
+        </a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const donateBtn = document.getElementById("donateBtn");
+
+    donateBtn.addEventListener("click", function () {
+      // For now, show an alert. In production, this would link to a payment processor
+      alert(
+        "Donation feature coming soon! This will link to a secure payment processor like Stripe or PayPal."
+      );
+
+      // Example of what this would look like in production:
+      // window.open('https://buy.stripe.com/your-donation-link', '_blank');
+    });
+
+    // Clear session data after successful registration
+    // This ensures users can't access this page directly without going through the flow
+    if (typeof Storage !== "undefined") {
+      // Clear any client-side storage if needed
+    }
+  });
+</script>
+{% endblock %}
+
+
+

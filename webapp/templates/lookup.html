@@ -1,0 +1,122 @@
+{% extends "base.html" %} {% block title %}Check Your Selections - Ski Parking
+Monitor{% endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="text-center mb-4">
+      <h2 class="fw-bold text-primary">
+        <i class="fas fa-search me-2"></i>
+        Check Your Selections
+      </h2>
+      <p class="text-muted">
+        Enter your email and PIN to view your parking monitoring selections.
+      </p>
+    </div>
+
+    <div class="card shadow-lg border-0">
+      <div class="card-body p-5">
+        <form method="POST">
+          <div class="mb-4">
+            <label for="email" class="form-label fw-bold">
+              <i class="fas fa-envelope me-2 text-primary"></i>
+              Email Address
+            </label>
+            <input
+              type="email"
+              class="form-control form-control-lg"
+              id="email"
+              name="email"
+              placeholder="your.email@example.com"
+              required
+            />
+          </div>
+
+          <div class="mb-4">
+            <label for="pin" class="form-label fw-bold">
+              <i class="fas fa-key me-2 text-primary"></i>
+              6-Digit PIN
+            </label>
+            <input
+              type="text"
+              class="form-control form-control-lg"
+              id="pin"
+              name="pin"
+              placeholder="123456"
+              maxlength="6"
+              pattern="[0-9]{6}"
+              required
+            />
+            <div class="form-text">
+              Enter the 6-digit PIN you created when signing up.
+            </div>
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="fas fa-search me-2"></i>
+              View My Selections
+            </button>
+            <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+              <i class="fas fa-arrow-left me-2"></i>
+              Back to Home
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Security Notice -->
+    <div class="card mt-4 border-0 bg-light">
+      <div class="card-body">
+        <h6 class="text-center mb-3">
+          <i class="fas fa-shield-alt me-2 text-success"></i>
+          Security Notice
+        </h6>
+        <p class="text-muted text-center small">
+          Your PIN is never stored in our database. We use secure hashing to
+          verify your identity without storing sensitive information.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const pinInput = document.getElementById("pin");
+    const form = document.querySelector("form");
+
+    // PIN validation
+    function validatePin() {
+      const pin = pinInput.value;
+      const pinRegex = /^[0-9]{6}$/;
+
+      if (pin) {
+        if (pinRegex.test(pin)) {
+          pinInput.classList.remove("is-invalid");
+          pinInput.classList.add("is-valid");
+        } else {
+          pinInput.classList.remove("is-valid");
+          pinInput.classList.add("is-invalid");
+        }
+      }
+    }
+
+    pinInput.addEventListener("input", validatePin);
+
+    // Form submission validation
+    form.addEventListener("submit", function (e) {
+      const pin = pinInput.value;
+
+      if (!pin || !/^[0-9]{6}$/.test(pin)) {
+        e.preventDefault();
+        alert("Please enter a valid 6-digit PIN (numbers only).");
+        pinInput.focus();
+        return;
+      }
+    });
+  });
+</script>
+{% endblock %}
+
+
+

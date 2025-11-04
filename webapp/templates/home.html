@@ -1,0 +1,322 @@
+{% extends "base.html" %} {% block title %}Ski Parking Monitor - Home{% endblock
+%} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="text-center mb-5">
+      <h1 class="display-4 fw-bold text-primary">
+        <i class="fas fa-skiing me-3"></i>
+        Ski Parking Monitor
+      </h1>
+      <p class="lead text-muted">
+        Never miss parking at your favorite ski resorts again. Get notified the
+        moment parking becomes available.
+      </p>
+    </div>
+
+    <div class="card shadow-lg border-0">
+      <div class="card-body p-5">
+        <form id="parkingForm" method="POST" action="{{ url_for('contact') }}">
+          <!-- Resort Selection -->
+          <div class="mb-4">
+            <h4 class="mb-3">
+              <i class="fas fa-mountain me-2 text-primary"></i>
+              Select Resorts
+            </h4>
+            <p class="text-muted">
+              Choose one or more resorts to monitor for parking availability.
+            </p>
+            <div class="row">
+              <div class="col-md-6">
+                <div class="form-check mb-3">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="resorts"
+                    value="Brighton"
+                    id="brighton"
+                  />
+                  <label class="form-check-label fw-bold" for="brighton">
+                    <i class="fas fa-snowflake me-2"></i>Brighton
+                  </label>
+                </div>
+                <div class="form-check mb-3">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="resorts"
+                    value="Solitude"
+                    id="solitude"
+                  />
+                  <label class="form-check-label fw-bold" for="solitude">
+                    <i class="fas fa-snowflake me-2"></i>Solitude
+                  </label>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-check mb-3">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="resorts"
+                    value="Alta"
+                    id="alta"
+                  />
+                  <label class="form-check-label fw-bold" for="alta">
+                    <i class="fas fa-snowflake me-2"></i>Alta
+                  </label>
+                </div>
+                <div class="form-check mb-3">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    name="resorts"
+                    value="Park City"
+                    id="parkcity"
+                  />
+                  <label class="form-check-label fw-bold" for="parkcity">
+                    <i class="fas fa-snowflake me-2"></i>Park City
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Date Selection -->
+          <div class="mb-4">
+            <h4 class="mb-3">
+              <i class="fas fa-calendar-alt me-2 text-primary"></i>
+              Select Dates
+            </h4>
+            <p class="text-muted">
+              Choose the specific dates you want to ski. Add as many dates as
+              you need.
+            </p>
+            <div class="mb-3">
+              <label for="dateInput" class="form-label">Add a Date</label>
+              <div class="input-group">
+                <input
+                  type="date"
+                  class="form-control"
+                  id="dateInput"
+                  placeholder="Select a date"
+                />
+                <button
+                  type="button"
+                  class="btn btn-outline-primary"
+                  id="addDateBtn"
+                >
+                  <i class="fas fa-plus me-1"></i>Add Date
+                </button>
+              </div>
+              <div class="form-text">
+                <i class="fas fa-clock me-1"></i>
+                All times are in Mountain Time (Salt Lake City)
+              </div>
+            </div>
+            <div id="selectedDates" class="mt-3"></div>
+          </div>
+
+          <!-- Hidden field to store selected dates -->
+          <input type="hidden" name="dates" id="datesInput" />
+
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="fas fa-arrow-right me-2"></i>
+              Continue to Contact Information
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="row mt-5">
+      <div class="col-md-4 text-center mb-4">
+        <div class="card h-100 border-0">
+          <div class="card-body">
+            <i class="fas fa-bell fa-3x text-primary mb-3"></i>
+            <h5>Instant Notifications</h5>
+            <p class="text-muted">
+              Get notified immediately when parking becomes available at your
+              selected resorts.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4 text-center mb-4">
+        <div class="card h-100 border-0">
+          <div class="card-body">
+            <i class="fas fa-clock fa-3x text-primary mb-3"></i>
+            <h5>24/7 Monitoring</h5>
+            <p class="text-muted">
+              Our system continuously monitors parking availability around the
+              clock.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4 text-center mb-4">
+        <div class="card h-100 border-0">
+          <div class="card-body">
+            <i class="fas fa-shield-alt fa-3x text-primary mb-3"></i>
+            <h5>Secure & Private</h5>
+            <p class="text-muted">
+              Your information is secure and we only use it to send you parking
+              alerts.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const dateInput = document.getElementById("dateInput");
+    const addDateBtn = document.getElementById("addDateBtn");
+    const selectedDatesDiv = document.getElementById("selectedDates");
+    const datesInput = document.getElementById("datesInput");
+    const form = document.getElementById("parkingForm");
+
+    let selectedDates = new Set();
+
+    // Get today's date (no timezone conversion needed for date picker)
+    function getTodayDate() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, "0");
+      const day = String(now.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    // Set minimum date to today
+    const today = getTodayDate();
+    dateInput.min = today;
+
+    // Add date functionality
+    addDateBtn.addEventListener("click", function () {
+      const selectedDate = dateInput.value;
+
+      if (!selectedDate) {
+        alert("Please select a date first.");
+        return;
+      }
+
+      if (selectedDates.has(selectedDate)) {
+        alert("This date is already selected.");
+        return;
+      }
+
+      // Debug: Log the selected date
+      console.log("Selected date from picker:", selectedDate);
+      console.log("Today's date:", today);
+
+      // Add date to set
+      selectedDates.add(selectedDate);
+      updateSelectedDatesDisplay();
+
+      // Clear the input
+      dateInput.value = "";
+    });
+
+    // Allow Enter key to add date
+    dateInput.addEventListener("keypress", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addDateBtn.click();
+      }
+    });
+
+    function updateSelectedDatesDisplay() {
+      const datesArray = Array.from(selectedDates).sort();
+      datesInput.value = datesArray.join(",");
+
+      if (datesArray.length > 0) {
+        // Create display with individual date cards
+        const display = document.createElement("div");
+        display.className = "mt-3";
+        display.innerHTML = `
+           <h6 class="text-primary mb-2">
+             <i class="fas fa-calendar-check me-2"></i>
+             Selected Dates (${datesArray.length})
+           </h6>
+           <div class="row" id="dateCards">
+           </div>
+         `;
+
+        const existing = selectedDatesDiv.querySelector(".mt-3");
+        if (existing) existing.remove();
+        selectedDatesDiv.appendChild(display);
+
+        // Add individual date cards
+        const dateCards = document.getElementById("dateCards");
+        dateCards.innerHTML = "";
+
+        datesArray.forEach((date) => {
+          const dateCard = document.createElement("div");
+          dateCard.className = "col-md-4 mb-2";
+
+          // Parse date string directly to avoid timezone issues
+          const [year, month, day] = date.split("-");
+          const dateObj = new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day)
+          );
+
+          dateCard.innerHTML = `
+             <div class="card border-primary">
+               <div class="card-body p-2 d-flex justify-content-between align-items-center">
+                 <span>
+                   <i class="fas fa-calendar me-1"></i>
+                   ${dateObj.toLocaleDateString("en-US", {
+                     weekday: "short",
+                     month: "short",
+                     day: "numeric",
+                     year: "numeric",
+                   })}
+                 </span>
+                 <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeDate('${date}')">
+                   <i class="fas fa-times"></i>
+                 </button>
+               </div>
+             </div>
+           `;
+          dateCards.appendChild(dateCard);
+        });
+      }
+    }
+
+    // Global function to remove dates
+    window.removeDate = function (dateToRemove) {
+      selectedDates.delete(dateToRemove);
+      updateSelectedDatesDisplay();
+    };
+
+    // Form validation
+    form.addEventListener("submit", function (e) {
+      const checkedResorts = document.querySelectorAll(
+        'input[name="resorts"]:checked'
+      );
+      const dates = datesInput.value;
+
+      // Debug: Log the dates being submitted
+      console.log("Dates being submitted:", dates);
+      console.log("Selected dates array:", Array.from(selectedDates));
+
+      if (checkedResorts.length === 0) {
+        e.preventDefault();
+        alert("Please select at least one resort.");
+        return;
+      }
+
+      if (!dates) {
+        e.preventDefault();
+        alert("Please select at least one date.");
+        return;
+      }
+    });
+  });
+</script>
+{% endblock %}
