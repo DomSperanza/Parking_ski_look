@@ -14,7 +14,20 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from config.database import get_db_connection
+from config.database import (
+    get_active_monitoring_jobs, 
+    get_user_selections, 
+    create_user_and_jobs, 
+    delete_user_and_jobs, 
+    delete_monitoring_job,
+    get_user_by_email_and_pin,
+    update_user_pin,
+    reactivate_job,
+    get_job_by_id
+)
+from flask_mail import Mail, Message
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadTimeSignature
+import os
 
 def create_user_hash(email, pin):
     """
@@ -79,75 +92,37 @@ def validate_date_in_mountain_time(date_str):
 def verify_user_credentials(email, pin):
     """
     Verify user credentials and return user_id if valid.
-    
-    Args:
-        email (str): User's email address
-        pin (str): User's 6-digit PIN
-        
-    Returns:
-        int or None: User ID if credentials are valid, None otherwise
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # Create hash locally to match what's stored (or let database.py handle it?)
+    # database.py's get_user_by_email_and_pin expects the HASHED pin if we look at the implementation?
+    # Wait, get_user_by_email_and_pin in database.py checks (User.pin == pin).
+    # The User.pin stores the hash.
+    # So we need to hash it here before passing it.
     
-    try:
-        # Create hash from provided credentials
-        user_hash = create_user_hash(email, pin)
-        
-        # Check if user exists with matching hash
-        cursor.execute('SELECT user_id FROM users WHERE email = ? AND pin = ?', (email, user_hash))
-        result = cursor.fetchone()
-        
-        return result[0] if result else None
-        
-    except Exception as e:
-        print(f"Error verifying credentials: {e}")
-        return None
-    finally:
-        conn.close()
+    combined = f"{email.lower().strip()}:{pin}"
+    user_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+    
+    user = get_user_by_email_and_pin(email, user_hash)
+    return user['user_id'] if user else None
 
-def delete_user_and_jobs(user_id):
-    """
-    Delete user and all associated monitoring jobs.
-    
-    Args:
-        user_id (int): User ID to delete
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Delete monitoring jobs first (foreign key constraint)
-        cursor.execute('DELETE FROM monitoring_jobs WHERE user_id = ?', (user_id,))
-        jobs_deleted = cursor.rowcount
-        
-        # Delete notifications
-        cursor.execute('DELETE FROM notifications WHERE user_id = ?', (user_id,))
-        notifications_deleted = cursor.rowcount
-        
-        # Delete user
-        cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
-        user_deleted = cursor.rowcount
-        
-        conn.commit()
-        
-        print(f"Deleted user {user_id}: {user_deleted} user, {jobs_deleted} jobs, {notifications_deleted} notifications")
-        return user_deleted > 0
-        
-    except Exception as e:
-        print(f"Error deleting user {user_id}: {e}")
-        conn.rollback()
-        return False
-    finally:
-        conn.close()
+
 
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
-    app.secret_key = 'your-secret-key-change-in-production'
+    app = Flask(__name__)
+    app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+    
+    # Email Configuration
+    app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+    app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
+    app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
+    app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True') == 'True'
+    app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', app.config['MAIL_USERNAME'])
+    
+    mail = Mail(app)
+    s = URLSafeTimedSerializer(app.secret_key)
     
     # Optional: Start background monitoring thread (disabled by default)
     # Uncomment to enable monitoring from within Flask app
@@ -159,7 +134,7 @@ def create_app():
     @app.route('/admin/monitoring/status')
     def monitoring_status():
         """Health check endpoint for monitoring service."""
-        from config.database import get_active_monitoring_jobs
+
         try:
             jobs = get_active_monitoring_jobs()
             return {
@@ -289,7 +264,7 @@ def create_app():
                 session['pin'] = pin
                 
                 # Get user's selections
-                from config.database import get_user_selections
+
                 selections = get_user_selections(user_id)
                 return render_template('user_dashboard.html', 
                                      email=email, 
@@ -346,7 +321,7 @@ def create_app():
         if not job_id:
             flash('Missing job ID.', 'error')
             # Stay on dashboard
-            from config.database import get_user_selections
+
             selections = get_user_selections(user_id)
             return render_template('user_dashboard.html', 
                                  email=session['email'], 
@@ -354,32 +329,18 @@ def create_app():
                                  user_id=user_id)
         
         try:
-            # Verify the job belongs to this user
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute('SELECT user_id FROM monitoring_jobs WHERE job_id = ?', (job_id,))
-            result = cursor.fetchone()
-            
-            if not result or result[0] != user_id:
-                flash('Job not found or access denied.', 'error')
-                # Stay on dashboard
-                from config.database import get_user_selections
-                selections = get_user_selections(user_id)
-                return render_template('user_dashboard.html', 
-                                     email=session['email'], 
-                                     selections=selections,
-                                     user_id=user_id)
-            
-            # Delete the job
-            cursor.execute('DELETE FROM monitoring_jobs WHERE job_id = ?', (job_id,))
-            conn.commit()
-            conn.close()
+
             
             flash('Monitoring job deleted successfully.', 'success')
             
             # Redirect back to dashboard with user's selections
-            from config.database import get_user_selections
+            # Delete the job
+            success = delete_monitoring_job(job_id, user_id)
+            
+            if success:
+                flash('Monitoring job deleted successfully.', 'success')
+            else:
+                flash('Job not found or access denied.', 'error')
             selections = get_user_selections(user_id)
             return render_template('user_dashboard.html', 
                                  email=session['email'], 
@@ -396,72 +357,167 @@ def create_app():
                                  selections=selections,
                                  user_id=user_id)
     
+    @app.route('/forgot-pin', methods=['GET', 'POST'])
+    def forgot_pin():
+        """Handle forgot PIN requests."""
+        if request.method == 'POST':
+            email = request.form.get('email')
+            if not email:
+                flash('Please enter your email address.', 'error')
+                return render_template('forgot_pin.html')
+            
+            # Check if user exists (we don't want to leak existence, but for this app it's fine to be vague)
+            # Actually, for security, we should always say "If an account exists..."
+            # But we need the user_id to verify existence for the token logic if we were storing it,
+            # but here we are stateless.
+            
+            # However, we should verify the email is in our DB before sending?
+            # Yes, let's check.
+            from config.database import get_db_session, User
+            from sqlalchemy import select
+            
+            session_db = get_db_session()
+            user = session_db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+            session_db.close()
+            
+            if user:
+                token = s.dumps(email, salt='reset-pin')
+                link = url_for('reset_pin', token=token, _external=True)
+                
+                msg = Message('Reset Your Ski Parking Monitor PIN', recipients=[email])
+                msg.body = f'Click the link to reset your PIN: {link}\n\nLink expires in 1 hour.'
+                
+                try:
+                    mail.send(msg)
+                    flash('If an account exists with that email, a reset link has been sent.', 'success')
+                except Exception as e:
+                    print(f"Error sending email: {e}")
+                    flash('Error sending email. Please try again later.', 'error')
+            else:
+                 # Don't reveal user existence
+                 flash('If an account exists with that email, a reset link has been sent.', 'success')
+                 
+            return redirect(url_for('forgot_pin'))
+            
+        return render_template('forgot_pin.html')
+
+    @app.route('/reset-pin/<token>', methods=['GET', 'POST'])
+    def reset_pin(token):
+        """Handle PIN reset with token."""
+        try:
+            email = s.loads(token, salt='reset-pin', max_age=3600)
+        except SignatureExpired:
+            flash('The reset link has expired.', 'error')
+            return redirect(url_for('forgot_pin'))
+        except BadTimeSignature:
+            flash('Invalid reset link.', 'error')
+            return redirect(url_for('forgot_pin'))
+            
+        if request.method == 'POST':
+            pin = request.form.get('pin')
+            pin_confirm = request.form.get('pin_confirm')
+            
+            if not pin or len(pin) != 6 or not pin.isdigit():
+                flash('PIN must be exactly 6 digits.', 'error')
+                return render_template('reset_pin.html', token=token)
+                
+            if pin != pin_confirm:
+                flash('PINs do not match.', 'error')
+                return render_template('reset_pin.html', token=token)
+            
+            # Update PIN
+            from config.database import get_db_session, User
+            from sqlalchemy import select
+            
+            session_db = get_db_session()
+            user = session_db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+            user_id = user.user_id if user else None
+            session_db.close()
+            
+            if user_id:
+                if update_user_pin(user_id, pin):
+                    flash('Your PIN has been updated. Please log in.', 'success')
+                    return redirect(url_for('lookup'))
+                else:
+                    flash('Error updating PIN. Please try again.', 'error')
+            else:
+                flash('User not found.', 'error')
+                
+        return render_template('reset_pin.html', token=token)
+    
+    @app.route('/continue-monitoring/<token>')
+    def continue_monitoring(token):
+        """Reactivate a monitoring job from email link."""
+        try:
+            # Token contains job_id
+            job_id = s.loads(token, salt='continue-monitoring', max_age=86400 * 7) # 7 days valid
+        except SignatureExpired:
+            return render_template('continue_monitoring.html', status='expired', message='This link has expired.')
+        except BadTimeSignature:
+            return render_template('continue_monitoring.html', status='invalid', message='Invalid link.')
+            
+        # Reactivate job
+        if reactivate_job(job_id):
+            job = get_job_by_id(job_id)
+            return render_template('continue_monitoring.html', status='success', job=job)
+        else:
+            return render_template('continue_monitoring.html', status='error', message='Could not reactivate job. It may have been deleted.')
+
     return app
 
-def create_user_and_jobs(email, pin, resorts, dates):
-    """Create user and monitoring jobs in database."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+def send_notification_email(app, job):
+    """
+    Send notification email with continue monitoring link.
+    Must be called within app context or with app instance passed.
+    """
+    from flask_mail import Message
+    from flask import url_for
     
-    try:
-        # Generate UUID for user
-        user_uuid = str(uuid.uuid4())
+    # We need to create a token for the job_id
+    # Since this might be called from daemon, we need to ensure we have the serializer
+    # We can access it via app.extensions or just recreate it if needed, 
+    # but passing 'app' allows us to use the configured secret key.
+    
+    s = URLSafeTimedSerializer(app.secret_key)
+    token = s.dumps(job['job_id'], salt='continue-monitoring')
+    
+    # Generate URL (requires app context)
+    # If running in daemon, we need SERVER_NAME or explicit host/port in url_for, 
+    # or we can construct it manually if needed. 
+    # For now, let's assume we can use _external=True if request context exists, 
+    # but in daemon it doesn't.
+    # We might need to set SERVER_NAME in config or use a hardcoded base URL for daemon.
+    
+    # For local dev, let's try to infer or default
+    base_url = os.environ.get('BASE_URL', 'http://localhost:5001')
+    continue_url = f"{base_url}/continue-monitoring/{token}"
+    
+    resort_name = job['resort_name']
+    date = job['target_date']
+    resort_url = job['resort_url']
+    
+    msg = Message(f'Parking Found: {resort_name} on {date}', recipients=[job['email']])
+    
+    # Simple HTML body
+    msg.html = f"""
+    <h2>Parking Available!</h2>
+    <p>We found parking at <strong>{resort_name}</strong> for <strong>{date}</strong>.</p>
+    <p><a href="{resort_url}" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Book Parking Now</a></p>
+    <hr>
+    <p>We have paused monitoring for this date to avoid spamming you.</p>
+    <p>If you didn't get the spot or want to keep looking:</p>
+    <p><a href="{continue_url}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Continue Monitoring</a></p>
+    """
+    
+    # Send
+    # If called from daemon, 'mail' object needs to be attached to app
+    mail = app.extensions.get('mail')
+    if not mail:
+        # Should have been initialized in create_app
+        from flask_mail import Mail
+        mail = Mail(app)
         
-        # Create secure hash from email + pin
-        user_hash = create_user_hash(email, pin)
-        
-        # Check if user already exists
-        cursor.execute('SELECT user_id FROM users WHERE email = ?', (email,))
-        existing_user = cursor.fetchone()
-        
-        if existing_user:
-            # User exists, check if hash matches (for login verification)
-            cursor.execute('SELECT user_id FROM users WHERE email = ? AND pin = ?', (email, user_hash))
-            if cursor.fetchone():
-                user_id = existing_user[0]
-            else:
-                raise Exception("User already exists with different credentials")
-        else:
-            # Create new user with hashed credentials
-            cursor.execute('''
-                INSERT INTO users (email, pin, first_name, last_name)
-                VALUES (?, ?, ?, ?)
-            ''', (email, user_hash, '', ''))
-            
-            user_id = cursor.lastrowid
-        
-        # Get resort IDs
-        resort_ids = []
-        for resort_name in resorts:
-            cursor.execute('SELECT resort_id FROM resorts WHERE resort_name = ?', (resort_name,))
-            result = cursor.fetchone()
-            if result:
-                resort_ids.append(result[0])
-        
-        # Parse dates (handle comma-separated string)
-        dates_to_process = []
-        for date_item in dates:
-            if ',' in date_item:
-                dates_to_process.extend(date_item.split(','))
-            else:
-                dates_to_process.append(date_item)
-        
-        # Remove empty strings and strip whitespace
-        dates_to_process = [d.strip() for d in dates_to_process if d.strip()]
-        
-        # Create monitoring jobs for each resort/date combination
-        for resort_id in resort_ids:
-            for date in dates_to_process:
-                cursor.execute('''
-                    INSERT INTO monitoring_jobs (user_id, resort_id, target_date, status)
-                    VALUES (?, ?, ?, ?)
-                ''', (user_id, resort_id, date, 'active'))
-        
-        conn.commit()
-        return user_id
-        
-    except Exception as e:
-        conn.rollback()
-        raise e
-    finally:
-        conn.close()
+    mail.send(msg)
+    return True
+
+

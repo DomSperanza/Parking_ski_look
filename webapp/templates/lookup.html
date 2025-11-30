@@ -48,6 +48,11 @@ Monitor{% endblock %} {% block content %}
             <div class="form-text">
               Enter the 6-digit PIN you created when signing up.
             </div>
+            <div class="text-end mt-2">
+              <a href="{{ url_for('forgot_pin') }}" class="text-decoration-none small">
+                <i class="fas fa-question-circle me-1"></i>Forgot PIN?
+              </a>
+            </div>
           </div>
 
           <div class="d-grid gap-2">
@@ -117,6 +122,7 @@ Monitor{% endblock %} {% block content %}
   });
 </script>
 {% endblock %}
+
 
 
 

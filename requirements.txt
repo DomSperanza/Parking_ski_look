@@ -3,6 +3,7 @@ requests>=2.25.1
 beautifulsoup4>=4.9.3
 selenium>=4.1.0
 webdriver-manager>=3.5.2
+undetected-chromedriver>=3.5.0
 playsound>=1.2.2
 python-dotenv>=0.19.2
 python-dateutil>=2.8.2
@@ -17,11 +18,10 @@ Flask-WTF>=1.0.0
 Flask-Mail>=0.9.1
 Werkzeug>=2.0.0
 
+
 # Database Dependencies
 SQLAlchemy>=1.4.0
-psycopg2-binary>=2.9.0
 alembic>=1.7.0
-
 # Payment Processing
 stripe>=3.0.0
 

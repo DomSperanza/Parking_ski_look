@@ -1,36 +1,42 @@
 """
-Database Configuration and Management
+Database Configuration and Management (SQLAlchemy)
 
-Handles SQLite database setup, connections, and initialization.
+Handles database setup, connections, and initialization using SQLAlchemy ORM.
 """
 
-import sqlite3
 import os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+from sqlalchemy import create_engine, select, delete, update, and_, func
+from sqlalchemy.orm import sessionmaker, scoped_session
+from config.models import Base, User, Resort, MonitoringJob, Notification, CheckLog
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Database configuration
-DB_PATH = Path(__file__).parent.parent / "data" / "parking_monitor.db"
+DB_DIR = Path(__file__).parent.parent / "data"
+DB_PATH = DB_DIR / "parking_monitor.db"
 BACKUP_DIR = Path(__file__).parent.parent / "backups"
 
-def get_db_connection():
+# Ensure data directory exists
+DB_DIR.mkdir(exist_ok=True)
+
+# SQLAlchemy Engine and Session
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+engine = create_engine(DATABASE_URL, echo=False)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db_session():
     """
-    Get a database connection.
+    Get a new database session.
     
     Returns:
-        sqlite3.Connection: Database connection object
+        sqlalchemy.orm.Session: Database session
     """
-    # Create data directory if it doesn't exist
-    DB_PATH.parent.mkdir(exist_ok=True)
-    
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row  # Enable column access by name
-    return conn
+    return SessionLocal()
 
 def init_database():
     """
@@ -38,124 +44,60 @@ def init_database():
     """
     logger.info("Initializing database...")
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
     try:
-        # Create users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                pin TEXT NOT NULL,
-                first_name TEXT,
-                last_name TEXT,
-                timezone TEXT DEFAULT 'America/Denver',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_checked TIMESTAMP
-            )
-        ''')
+        # Create all tables defined in models
+        Base.metadata.create_all(bind=engine)
         
-        # Create resorts table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS resorts (
-                resort_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                resort_name TEXT UNIQUE NOT NULL,
-                resort_url TEXT NOT NULL,
-                status TEXT DEFAULT 'active',
-                available_color TEXT,
-                unavailable_color TEXT,
-                check_interval INTEGER DEFAULT 10
-            )
-        ''')
-        
-        # Create monitoring_jobs table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS monitoring_jobs (
-                job_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                resort_id INTEGER NOT NULL,
-                target_date DATE NOT NULL,
-                status TEXT DEFAULT 'active',
-                priority INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_checked TIMESTAMP,
-                success_count INTEGER DEFAULT 0,
-                FOREIGN KEY (user_id) REFERENCES users (user_id),
-                FOREIGN KEY (resort_id) REFERENCES resorts (resort_id)
-            )
-        ''')
-        
-        # Create notifications table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS notifications (
-                notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                job_id INTEGER NOT NULL,
-                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                delivery_status TEXT DEFAULT 'sent',
-                resort_name TEXT,
-                available_date DATE,
-                FOREIGN KEY (user_id) REFERENCES users (user_id),
-                FOREIGN KEY (job_id) REFERENCES monitoring_jobs (job_id)
-            )
-        ''')
-        
-        # Create check_logs table for monitoring system
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS check_logs (
-                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                resort_id INTEGER NOT NULL,
-                check_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                status TEXT NOT NULL,
-                response_time INTEGER,
-                error_message TEXT,
-                availability_found BOOLEAN DEFAULT FALSE,
-                FOREIGN KEY (resort_id) REFERENCES resorts (resort_id)
-            )
-        ''')
-        
-        # Insert default resorts data
-        cursor.execute('''
-            INSERT OR IGNORE INTO resorts (resort_name, resort_url, available_color, unavailable_color, check_interval)
-            VALUES 
-                ('Brighton', 'https://reservenski.parkbrightonresort.com/select-parking', 'rgba(49, 200, 25, 0.2)', 'rgba(247, 205, 212, 1)', 10),
-                ('Solitude', 'https://reservenski.parksolitude.com/select-parking', 'rgba(49, 200, 25, 0.2)', 'rgba(247, 205, 212, 1)', 10),
-                ('Alta', 'https://reserve.altaparking.com/select-parking', 'rgba(49, 200, 25, 0.2)', 'rgba(247, 205, 212, 1)', 10),
-                ('Park City', 'https://reserve.parkatparkcitymountain.com/select-parking', 'rgba(49, 200, 25, 0.2)', 'rgba(247, 205, 212, 1)', 10)
-        ''')
-        
-        conn.commit()
-        logger.info("Database initialized successfully!")
-        
+        # Insert default resorts if they don't exist
+        session = get_db_session()
+        try:
+            default_resorts = [
+                {'name': 'Brighton', 'url': 'https://reservenski.parkbrightonresort.com/select-parking', 'avail': 'rgba(49, 200, 25, 0.2)', 'unavail': 'rgba(247, 205, 212, 1)'},
+                {'name': 'Solitude', 'url': 'https://reservenski.parksolitude.com/select-parking', 'avail': 'rgba(49, 200, 25, 0.2)', 'unavail': 'rgba(247, 205, 212, 1)'},
+                {'name': 'Alta', 'url': 'https://reserve.altaparking.com/select-parking', 'avail': 'rgba(49, 200, 25, 0.2)', 'unavail': 'rgba(247, 205, 212, 1)'},
+                {'name': 'Park City', 'url': 'https://reserve.parkatparkcitymountain.com/select-parking', 'avail': 'rgba(49, 200, 25, 0.2)', 'unavail': 'rgba(247, 205, 212, 1)'}
+            ]
+            
+            for r_data in default_resorts:
+                existing = session.execute(select(Resort).where(Resort.resort_name == r_data['name'])).scalar_one_or_none()
+                if not existing:
+                    resort = Resort(
+                        resort_name=r_data['name'],
+                        resort_url=r_data['url'],
+                        available_color=r_data['avail'],
+                        unavailable_color=r_data['unavail'],
+                        check_interval=10
+                    )
+                    session.add(resort)
+            
+            session.commit()
+            logger.info("Database initialized successfully!")
+            
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Error seeding default data: {e}")
+            raise
+        finally:
+            session.close()
+            
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
-        conn.rollback()
         raise
-    finally:
-        conn.close()
 
 def backup_database():
     """
     Create a backup of the database.
-    
-    Returns:
-        str: Path to the backup file
     """
     if not DB_PATH.exists():
         logger.warning("Database file does not exist, cannot create backup")
         return None
     
-    # Create backup directory if it doesn't exist
     BACKUP_DIR.mkdir(exist_ok=True)
-    
-    # Generate backup filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"parking_monitor_backup_{timestamp}.db"
     backup_path = BACKUP_DIR / backup_filename
     
     try:
-        # Copy database file
         import shutil
         shutil.copy2(DB_PATH, backup_path)
         logger.info(f"Database backed up to: {backup_path}")
@@ -166,464 +108,598 @@ def backup_database():
 
 def get_active_monitoring_jobs():
     """
-    Get all active monitoring jobs for the scraping system.
-    
-    Returns:
-        list: List of active monitoring jobs
+    Get all active monitoring jobs.
+    Returns list of dictionaries to maintain compatibility.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            SELECT 
-                j.job_id,
-                j.user_id,
-                j.target_date,
-                j.resort_id,
-                r.resort_name,
-                r.resort_url,
-                r.available_color,
-                r.unavailable_color,
-                u.email,
-                u.first_name,
-                u.last_name
-            FROM monitoring_jobs j
-            JOIN resorts r ON j.resort_id = r.resort_id
-            JOIN users u ON j.user_id = u.user_id
-            WHERE j.status = 'active'
-            ORDER BY j.priority DESC, j.created_at ASC
-        ''')
+        stmt = (
+            select(MonitoringJob, Resort, User)
+            .join(Resort, MonitoringJob.resort_id == Resort.resort_id)
+            .join(User, MonitoringJob.user_id == User.user_id)
+            .where(MonitoringJob.status == 'active')
+            .order_by(MonitoringJob.priority.desc(), MonitoringJob.created_at.asc())
+        )
+        results = session.execute(stmt).all()
         
-        jobs = cursor.fetchall()
-        return [dict(job) for job in jobs]
-    
+        jobs = []
+        for job, resort, user in results:
+            jobs.append({
+                'job_id': job.job_id,
+                'user_id': job.user_id,
+                'target_date': job.target_date.strftime('%Y-%m-%d') if hasattr(job.target_date, 'strftime') else str(job.target_date),
+                'resort_id': job.resort_id,
+                'resort_name': resort.resort_name,
+                'resort_url': resort.resort_url,
+                'available_color': resort.available_color,
+                'unavailable_color': resort.unavailable_color,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name
+            })
+        return jobs
     except Exception as e:
         logger.error(f"Error fetching active jobs: {e}")
         return []
     finally:
-        conn.close()
+        session.close()
 
 def get_user_selections(user_id):
     """
-    Get user's resort and date selections from monitoring jobs.
-    
-    Args:
-        user_id (int): User ID to query
-        
-    Returns:
-        list: List of dictionaries with resort and date information
+    Get user's resort and date selections.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            SELECT 
-                mj.job_id,
-                mj.target_date,
-                r.resort_name,
-                r.resort_url,
-                mj.status,
-                mj.created_at
-            FROM monitoring_jobs mj
-            JOIN resorts r ON mj.resort_id = r.resort_id
-            WHERE mj.user_id = ?
-            ORDER BY r.resort_name, mj.target_date
-        ''', (user_id,))
+        stmt = (
+            select(MonitoringJob, Resort)
+            .join(Resort, MonitoringJob.resort_id == Resort.resort_id)
+            .where(MonitoringJob.user_id == user_id)
+            .order_by(Resort.resort_name, MonitoringJob.target_date)
+        )
+        results = session.execute(stmt).all()
         
-        jobs = cursor.fetchall()
-        return [dict(job) for job in jobs]
-    
+        selections = []
+        for job, resort in results:
+            selections.append({
+                'job_id': job.job_id,
+                'target_date': job.target_date.strftime('%Y-%m-%d') if hasattr(job.target_date, 'strftime') else str(job.target_date),
+                'resort_name': resort.resort_name,
+                'resort_url': resort.resort_url,
+                'status': job.status,
+                'created_at': job.created_at
+            })
+        return selections
     except Exception as e:
         logger.error(f"Error fetching user selections: {e}")
         return []
     finally:
-        conn.close()
+        session.close()
 
 def get_all_users_with_selections():
     """
-    Get all users with their resort and date selections.
-    Note: PIN field now contains SHA-256 hash, not raw PIN.
-    
-    Returns:
-        list: List of dictionaries with user and selection information
+    Get all users with their selections.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            SELECT 
-                u.user_id,
-                u.email,
-                u.pin as pin_hash,
-                u.created_at,
-                r.resort_name,
-                mj.target_date,
-                mj.status as job_status
-            FROM users u
-            LEFT JOIN monitoring_jobs mj ON u.user_id = mj.user_id
-            LEFT JOIN resorts r ON mj.resort_id = r.resort_id
-            ORDER BY u.user_id, r.resort_name, mj.target_date
-        ''')
+        stmt = (
+            select(User, MonitoringJob, Resort)
+            .outerjoin(MonitoringJob, User.user_id == MonitoringJob.user_id)
+            .outerjoin(Resort, MonitoringJob.resort_id == Resort.resort_id)
+            .order_by(User.user_id, Resort.resort_name, MonitoringJob.target_date)
+        )
+        results = session.execute(stmt).all()
         
-        results = cursor.fetchall()
-        
-        # Group by user
-        users = {}
-        for row in results:
-            user_id = row['user_id']
-            if user_id not in users:
-                users[user_id] = {
-                    'user_id': user_id,
-                    'email': row['email'],
-                    'pin_hash': row['pin_hash'][:16] + '...',  # Show only first 16 chars of hash
-                    'created_at': row['created_at'],
+        users_map = {}
+        for user, job, resort in results:
+            if user.user_id not in users_map:
+                users_map[user.user_id] = {
+                    'user_id': user.user_id,
+                    'email': user.email,
+                    'pin_hash': (user.pin[:16] + '...') if user.pin else '',
+                    'created_at': user.created_at,
                     'selections': []
                 }
             
-            if row['resort_name']:  # Only add if there are selections
-                users[user_id]['selections'].append({
-                    'resort_name': row['resort_name'],
-                    'target_date': row['target_date'],
-                    'job_status': row['job_status']
+            if resort and job:
+                users_map[user.user_id]['selections'].append({
+                    'resort_name': resort.resort_name,
+                    'target_date': job.target_date,
+                    'job_status': job.status
                 })
         
-        return list(users.values())
-    
+        return list(users_map.values())
     except Exception as e:
-        logger.error(f"Error fetching all users with selections: {e}")
+        logger.error(f"Error fetching all users: {e}")
         return []
     finally:
-        conn.close()
+        session.close()
 
 def log_check_result(resort_id, status, response_time=None, error_message=None, availability_found=False):
     """
-    Log the result of a monitoring check.
-    
-    Args:
-        resort_id (int): ID of the resort that was checked
-        status (str): Status of the check (success, failed, timeout)
-        response_time (int, optional): Response time in milliseconds
-        error_message (str, optional): Error message if check failed
-        availability_found (bool): Whether availability was found
+    Log monitoring check result.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            INSERT INTO check_logs (resort_id, status, response_time, error_message, availability_found)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (resort_id, status, response_time, error_message, availability_found))
-        
-        conn.commit()
+        log = CheckLog(
+            resort_id=resort_id,
+            status=status,
+            response_time=response_time,
+            error_message=error_message,
+            availability_found=availability_found
+        )
+        session.add(log)
+        session.commit()
         logger.info(f"Logged check result for resort {resort_id}: {status}")
-    
     except Exception as e:
         logger.error(f"Error logging check result: {e}")
+        session.rollback()
     finally:
-        conn.close()
+        session.close()
+
+def delete_user_and_jobs(user_id):
+    """
+    Delete user and all associated data.
+    """
+    session = get_db_session()
+    try:
+        # Delete user (cascade will handle jobs and notifications)
+        stmt = delete(User).where(User.user_id == user_id)
+        result = session.execute(stmt)
+        session.commit()
+        
+        logger.info(f"Deleted user {user_id}")
+        return result.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+def delete_monitoring_job(job_id, user_id):
+    """
+    Delete a specific monitoring job.
+    """
+    session = get_db_session()
+    try:
+        stmt = delete(MonitoringJob).where(and_(
+            MonitoringJob.job_id == job_id,
+            MonitoringJob.user_id == user_id
+        ))
+        result = session.execute(stmt)
+        session.commit()
+        return result.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting job {job_id}: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 def create_user(email, pin, first_name=None, last_name=None, timezone='America/Denver'):
     """
     Create a new user.
-    
-    Args:
-        email (str): User's email address
-        pin (str): User's PIN
-        first_name (str, optional): User's first name
-        last_name (str, optional): User's last name
-        timezone (str): User's timezone
-    
-    Returns:
-        int: User ID if successful, None if failed
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            INSERT INTO users (email, pin, first_name, last_name, timezone)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (email, pin, first_name, last_name, timezone))
-        
-        conn.commit()
-        user_id = cursor.lastrowid
-        logger.info(f"Created user: {email} (ID: {user_id})")
-        return user_id
-    
-    except sqlite3.IntegrityError:
-        logger.warning(f"User with email {email} already exists")
-        return None
+        # Check if user exists
+        existing = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if existing:
+            logger.warning(f"User with email {email} already exists")
+            return None
+            
+        user = User(
+            email=email,
+            pin=pin,
+            first_name=first_name,
+            last_name=last_name,
+            timezone=timezone
+        )
+        session.add(user)
+        session.commit()
+        logger.info(f"Created user: {email} (ID: {user.user_id})")
+        return user.user_id
     except Exception as e:
         logger.error(f"Error creating user: {e}")
+        session.rollback()
         return None
     finally:
-        conn.close()
+        session.close()
 
 def create_monitoring_job(user_id, resort_id, target_date, priority=1):
     """
     Create a new monitoring job.
-    
-    Args:
-        user_id (int): User ID
-        resort_id (int): Resort ID
-        target_date (str): Target date in YYYY-MM-DD format
-        priority (int): Priority level (1=low, 2=medium, 3=high)
-    
-    Returns:
-        int: Job ID if successful, None if failed
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            INSERT INTO monitoring_jobs (user_id, resort_id, target_date, priority)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, resort_id, target_date, priority))
-        
-        conn.commit()
-        job_id = cursor.lastrowid
+        # Ensure target_date is a date object if passed as string
+        if isinstance(target_date, str):
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+            
+        job = MonitoringJob(
+            user_id=user_id,
+            resort_id=resort_id,
+            target_date=target_date,
+            priority=priority
+        )
+        session.add(job)
+        session.commit()
         logger.info(f"Created monitoring job: User {user_id}, Resort {resort_id}, Date {target_date}")
-        return job_id
-    
+        return job.job_id
     except Exception as e:
         logger.error(f"Error creating monitoring job: {e}")
+        session.rollback()
         return None
     finally:
-        conn.close()
+        session.close()
 
 def get_user_by_email_and_pin(email, pin):
     """
-    Get user by email and PIN for status checking.
-    
-    Args:
-        email (str): User's email
-        pin (str): User's PIN
-    
-    Returns:
-        dict: User data if found, None if not found
+    Get user by email and PIN.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            SELECT user_id, email, pin, first_name, last_name, timezone, created_at
-            FROM users
-            WHERE email = ? AND pin = ?
-        ''', (email, pin))
+        user = session.execute(
+            select(User).where(and_(User.email == email, User.pin == pin))
+        ).scalar_one_or_none()
         
-        user = cursor.fetchone()
-        return dict(user) if user else None
-    
+        if user:
+            return {
+                'user_id': user.user_id,
+                'email': user.email,
+                'pin': user.pin,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'timezone': user.timezone,
+                'created_at': user.created_at
+            }
+        return None
     except Exception as e:
         logger.error(f"Error fetching user: {e}")
         return None
     finally:
-        conn.close()
+        session.close()
 
 def get_user_monitoring_jobs(user_id):
     """
-    Get all monitoring jobs for a specific user.
-    
-    Args:
-        user_id (int): User ID
-    
-    Returns:
-        list: List of monitoring jobs
+    Get all monitoring jobs for a user.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            SELECT 
-                j.job_id,
-                j.target_date,
-                j.status,
-                j.created_at,
-                j.success_count,
-                r.resort_name
-            FROM monitoring_jobs j
-            JOIN resorts r ON j.resort_id = r.resort_id
-            WHERE j.user_id = ?
-            ORDER BY j.created_at DESC
-        ''', (user_id,))
+        stmt = (
+            select(MonitoringJob, Resort)
+            .join(Resort, MonitoringJob.resort_id == Resort.resort_id)
+            .where(MonitoringJob.user_id == user_id)
+            .order_by(MonitoringJob.created_at.desc())
+        )
+        results = session.execute(stmt).all()
         
-        jobs = cursor.fetchall()
-        return [dict(job) for job in jobs]
-    
+        jobs = []
+        for job, resort in results:
+            jobs.append({
+                'job_id': job.job_id,
+                'target_date': job.target_date,
+                'status': job.status,
+                'created_at': job.created_at,
+                'success_count': job.success_count,
+                'resort_name': resort.resort_name
+            })
+        return jobs
     except Exception as e:
         logger.error(f"Error fetching user jobs: {e}")
         return []
     finally:
-        conn.close()
+        session.close()
 
 def update_job_last_checked(job_id, timestamp=None):
     """
-    Update the last_checked timestamp for a monitoring job.
-    
-    Args:
-        job_id (int): Job ID to update
-        timestamp (datetime, optional): Timestamp to set. Defaults to current time.
-    
-    Returns:
-        bool: True if successful, False otherwise
+    Update last_checked timestamp.
     """
     if timestamp is None:
         timestamp = datetime.now()
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute('''
-            UPDATE monitoring_jobs
-            SET last_checked = ?
-            WHERE job_id = ?
-        ''', (timestamp, job_id))
         
-        conn.commit()
-        return cursor.rowcount > 0
+    session = get_db_session()
+    try:
+        stmt = (
+            update(MonitoringJob)
+            .where(MonitoringJob.job_id == job_id)
+            .values(last_checked=timestamp)
+        )
+        result = session.execute(stmt)
+        session.commit()
+        return result.rowcount > 0
     except Exception as e:
-        logger.error(f"Error updating job last_checked: {e}")
+        logger.error(f"Error updating job: {e}")
+        session.rollback()
         return False
     finally:
-        conn.close()
+        session.close()
 
 def increment_job_success_count(job_id):
     """
-    Increment the success_count for a monitoring job.
-    
-    Args:
-        job_id (int): Job ID to update
-    
-    Returns:
-        bool: True if successful, False otherwise
+    Increment success count.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            UPDATE monitoring_jobs
-            SET success_count = success_count + 1
-            WHERE job_id = ?
-        ''', (job_id,))
-        
-        conn.commit()
-        return cursor.rowcount > 0
+        stmt = (
+            update(MonitoringJob)
+            .where(MonitoringJob.job_id == job_id)
+            .values(success_count=MonitoringJob.success_count + 1)
+        )
+        result = session.execute(stmt)
+        session.commit()
+        return result.rowcount > 0
     except Exception as e:
-        logger.error(f"Error incrementing job success count: {e}")
+        logger.error(f"Error incrementing success count: {e}")
+        session.rollback()
         return False
     finally:
-        conn.close()
+        session.close()
+
+
+
+def mark_job_notified(job_id):
+    """
+    Mark job as notified (paused).
+    """
+    session = get_db_session()
+    try:
+        stmt = (
+            update(MonitoringJob)
+            .where(MonitoringJob.job_id == job_id)
+            .values(status='notified')
+        )
+        result = session.execute(stmt)
+        session.commit()
+        logger.info(f"Marked job {job_id} as notified")
+        return result.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error marking job notified: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+def reactivate_job(job_id):
+    """
+    Reactivate a notified job.
+    """
+    session = get_db_session()
+    try:
+        stmt = (
+            update(MonitoringJob)
+            .where(MonitoringJob.job_id == job_id)
+            .values(status='active')
+        )
+        result = session.execute(stmt)
+        session.commit()
+        logger.info(f"Reactivated job {job_id}")
+        return result.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error reactivating job: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+def get_job_by_id(job_id):
+    """
+    Get job details by ID.
+    """
+    session = get_db_session()
+    try:
+        stmt = (
+            select(MonitoringJob, Resort, User)
+            .join(Resort, MonitoringJob.resort_id == Resort.resort_id)
+            .join(User, MonitoringJob.user_id == User.user_id)
+            .where(MonitoringJob.job_id == job_id)
+        )
+        result = session.execute(stmt).first()
+        
+        if result:
+            job, resort, user = result
+            return {
+                'job_id': job.job_id,
+                'user_id': job.user_id,
+                'target_date': job.target_date,
+                'status': job.status,
+                'resort_name': resort.resort_name,
+                'resort_url': resort.resort_url,
+                'email': user.email
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching job {job_id}: {e}")
+        return None
+    finally:
+        session.close()
 
 def create_notification(job_id, user_id, resort_name, available_date):
     """
-    Create a notification record in the database.
-    
-    Args:
-        job_id (int): Monitoring job ID
-        user_id (int): User ID
-        resort_name (str): Name of the resort
-        available_date (str): Available date in YYYY-MM-DD format
-    
-    Returns:
-        int: Notification ID if successful, None otherwise
+    Create notification.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            INSERT INTO notifications (user_id, job_id, resort_name, available_date, delivery_status)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, job_id, resort_name, available_date, 'sent'))
-        
-        conn.commit()
-        notification_id = cursor.lastrowid
-        logger.info(f"Created notification {notification_id} for job {job_id}")
-        return notification_id
+        # Ensure available_date is a date object
+        if isinstance(available_date, str):
+            available_date = datetime.strptime(available_date, '%Y-%m-%d').date()
+            
+        notif = Notification(
+            job_id=job_id,
+            user_id=user_id,
+            resort_name=resort_name,
+            available_date=available_date,
+            delivery_status='sent'
+        )
+        session.add(notif)
+        session.commit()
+        logger.info(f"Created notification {notif.notification_id} for job {job_id}")
+        return notif.notification_id
     except Exception as e:
         logger.error(f"Error creating notification: {e}")
+        session.rollback()
         return None
     finally:
-        conn.close()
+        session.close()
 
 def get_notification_history(user_id, limit=50):
     """
-    Get notification history for a user.
-    
-    Args:
-        user_id (int): User ID
-        limit (int): Maximum number of notifications to return
-    
-    Returns:
-        list: List of notification records
+    Get notification history.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        cursor.execute('''
-            SELECT 
-                notification_id,
-                job_id,
-                sent_at,
-                delivery_status,
-                resort_name,
-                available_date
-            FROM notifications
-            WHERE user_id = ?
-            ORDER BY sent_at DESC
-            LIMIT ?
-        ''', (user_id, limit))
+        stmt = (
+            select(Notification)
+            .where(Notification.user_id == user_id)
+            .order_by(Notification.sent_at.desc())
+            .limit(limit)
+        )
+        results = session.execute(stmt).scalars().all()
         
-        notifications = cursor.fetchall()
-        return [dict(notif) for notif in notifications]
+        return [{
+            'notification_id': n.notification_id,
+            'job_id': n.job_id,
+            'sent_at': n.sent_at,
+            'delivery_status': n.delivery_status,
+            'resort_name': n.resort_name,
+            'available_date': n.available_date
+        } for n in results]
     except Exception as e:
-        logger.error(f"Error fetching notification history: {e}")
+        logger.error(f"Error fetching history: {e}")
         return []
     finally:
-        conn.close()
+        session.close()
 
 def check_recent_notification(job_id, minutes=30):
     """
-    Check if a notification was sent recently for this job.
-    
-    Args:
-        job_id (int): Job ID to check
-        minutes (int): Number of minutes to look back
-    
-    Returns:
-        bool: True if notification sent recently, False otherwise
+    Check for recent notifications.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
+    session = get_db_session()
     try:
-        # SQLite datetime subtraction syntax
-        cursor.execute('''
-            SELECT notification_id
-            FROM notifications
-            WHERE job_id = ?
-            AND sent_at > datetime('now', '-' || ? || ' minutes')
-        ''', (job_id, str(minutes)))
-        
-        result = cursor.fetchone()
+        cutoff_time = datetime.now() - timedelta(minutes=minutes)
+        stmt = (
+            select(Notification)
+            .where(and_(
+                Notification.job_id == job_id,
+                Notification.sent_at > cutoff_time
+            ))
+        )
+        result = session.execute(stmt).first()
         return result is not None
     except Exception as e:
         logger.error(f"Error checking recent notification: {e}")
         return False
     finally:
-        conn.close()
+        session.close()
+
+def create_user_and_jobs(email, pin, resorts, dates):
+    """
+    Create user and monitoring jobs.
+    """
+    import hashlib
+    import uuid
+    
+    session = get_db_session()
+    try:
+        # Create hash
+        combined = f"{email.lower().strip()}:{pin}"
+        user_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+        
+        # Check if user exists
+        user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        
+        if user:
+            # Verify hash matches
+            if user.pin != user_hash:
+                raise Exception("User already exists with different credentials")
+        else:
+            # Create new user
+            user = User(
+                email=email,
+                pin=user_hash,
+                first_name='',
+                last_name=''
+            )
+            session.add(user)
+            session.flush() # Get ID
+            
+        # Get resort IDs
+        resort_ids = []
+        for resort_name in resorts:
+            r = session.execute(select(Resort).where(Resort.resort_name == resort_name)).scalar_one_or_none()
+            if r:
+                resort_ids.append(r.resort_id)
+        
+        # Parse dates
+        dates_to_process = []
+        for date_item in dates:
+            if ',' in date_item:
+                dates_to_process.extend(date_item.split(','))
+            else:
+                dates_to_process.append(date_item)
+        
+        dates_to_process = [d.strip() for d in dates_to_process if d.strip()]
+        
+        # Create jobs
+        for resort_id in resort_ids:
+            for date_str in dates_to_process:
+                target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                
+                # Check if job already exists
+                existing_job = session.execute(select(MonitoringJob).where(and_(
+                    MonitoringJob.user_id == user.user_id,
+                    MonitoringJob.resort_id == resort_id,
+                    MonitoringJob.target_date == target_date
+                ))).scalar_one_or_none()
+                
+                if not existing_job:
+                    job = MonitoringJob(
+                        user_id=user.user_id,
+                        resort_id=resort_id,
+                        target_date=target_date,
+                        status='active'
+                    )
+                    session.add(job)
+        
+        session.commit()
+        return user.user_id
+        
+    except Exception as e:
+        logger.error(f"Error creating user and jobs: {e}")
+        session.rollback()
+        raise e
+    finally:
+        session.close()
+
+def update_user_pin(user_id, new_pin):
+    """
+    Update user's PIN.
+    """
+    import hashlib
+    session = get_db_session()
+    try:
+        # Create hash
+        # We need the email to salt the hash correctly as per create_user_hash logic
+        # But wait, create_user_hash uses email + pin.
+        # So we need to fetch the user first to get the email.
+        
+        user = session.execute(select(User).where(User.user_id == user_id)).scalar_one_or_none()
+        if not user:
+            return False
+            
+        combined = f"{user.email.lower().strip()}:{new_pin}"
+        pin_hash = hashlib.sha256(combined.encode('utf-8')).hexdigest()
+        
+        user.pin = pin_hash
+        session.commit()
+        logger.info(f"Updated PIN for user {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating PIN for user {user_id}: {e}")
+        session.rollback()
+        return False
+    finally:
+        session.close()
 
 if __name__ == "__main__":
-    # Initialize database when run directly
     init_database()
-    print("Database initialization complete!")

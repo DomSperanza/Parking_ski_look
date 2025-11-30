@@ -6,7 +6,7 @@
 - Copy `env.example` to `.env`
 - Set `SENDER_EMAIL` and `SENDER_PASSWORD` for email notifications
 - Set `SECRET_KEY` for Flask sessions
-- Configure database URL (SQLite for dev, PostgreSQL for prod)
+- Configure database URL (SQLite)
 
 ### 2. Database Setup
 - Initialize database: `python -c "from config.database import init_database; init_database()"`
@@ -38,16 +38,9 @@ python main.py --mode webapp --host 0.0.0.0 --port 5000 --debug
 python services/monitoring_daemon.py
 ```
 
-### Production Mode
 
-**Option 1: Separate Processes (Recommended)**
 
-1. Run Flask app with Gunicorn:
-```bash
-gunicorn -w 4 -b 0.0.0.0:5000 "webapp.app:create_app()"
-```
 
-2. Run monitoring daemon as systemd service (see below)
 
 **Option 2: Integrated (Flask thread)**
 

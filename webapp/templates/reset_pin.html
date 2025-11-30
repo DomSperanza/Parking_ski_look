@@ -1,0 +1,107 @@
+{% extends "base.html" %} {% block title %}Set New PIN - Ski Parking Monitor{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <div class="text-center mb-4">
+      <h2 class="fw-bold text-primary">
+        <i class="fas fa-key me-2"></i>
+        Set New PIN
+      </h2>
+      <p class="text-muted">Please enter your new 6-digit PIN below.</p>
+    </div>
+
+    <div class="card shadow-lg border-0">
+      <div class="card-body p-5">
+        <form method="POST">
+          <div class="mb-4">
+            <label for="pin" class="form-label fw-bold">
+              <i class="fas fa-lock me-2 text-primary"></i>
+              New PIN
+            </label>
+            <input
+              type="text"
+              class="form-control form-control-lg"
+              id="pin"
+              name="pin"
+              placeholder="123456"
+              maxlength="6"
+              pattern="[0-9]{6}"
+              required
+            />
+            <div class="form-text">Must be exactly 6 digits.</div>
+          </div>
+
+          <div class="mb-4">
+            <label for="pin_confirm" class="form-label fw-bold">
+              <i class="fas fa-check-circle me-2 text-primary"></i>
+              Confirm New PIN
+            </label>
+            <input
+              type="text"
+              class="form-control form-control-lg"
+              id="pin_confirm"
+              name="pin_confirm"
+              placeholder="123456"
+              maxlength="6"
+              pattern="[0-9]{6}"
+              required
+            />
+          </div>
+
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="fas fa-save me-2"></i>
+              Update PIN
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const pinInput = document.getElementById("pin");
+    const pinConfirmInput = document.getElementById("pin_confirm");
+    const form = document.querySelector("form");
+
+    function validatePin(input) {
+      const pin = input.value;
+      const pinRegex = /^[0-9]{6}$/;
+
+      if (pin) {
+        if (pinRegex.test(pin)) {
+          input.classList.remove("is-invalid");
+          input.classList.add("is-valid");
+        } else {
+          input.classList.remove("is-valid");
+          input.classList.add("is-invalid");
+        }
+      }
+    }
+
+    pinInput.addEventListener("input", () => validatePin(pinInput));
+    pinConfirmInput.addEventListener("input", () =>
+      validatePin(pinConfirmInput)
+    );
+
+    form.addEventListener("submit", function (e) {
+      const pin = pinInput.value;
+      const confirm = pinConfirmInput.value;
+
+      if (!/^[0-9]{6}$/.test(pin)) {
+        e.preventDefault();
+        alert("PIN must be 6 digits.");
+        return;
+      }
+
+      if (pin !== confirm) {
+        e.preventDefault();
+        alert("PINs do not match.");
+        return;
+      }
+    });
+  });
+</script>
+{% endblock %}

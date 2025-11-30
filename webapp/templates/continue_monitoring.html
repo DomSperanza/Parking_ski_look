@@ -1,0 +1,42 @@
+{% extends "base.html" %} {% block title %}Monitoring Status - Ski Parking Monitor{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="text-center mb-4">
+      {% if status == 'success' %}
+      <div class="mb-3">
+        <i class="fas fa-check-circle text-success fa-4x"></i>
+      </div>
+      <h2 class="fw-bold text-success">Monitoring Resumed!</h2>
+      <p class="lead">
+        We are back to checking for parking at <strong>{{ job.resort_name }}</strong> on
+        <strong>{{ job.target_date }}</strong>.
+      </p>
+      <p class="text-muted">
+        You will be notified again if we find another spot.
+      </p>
+      {% elif status == 'expired' %}
+      <div class="mb-3">
+        <i class="fas fa-clock text-warning fa-4x"></i>
+      </div>
+      <h2 class="fw-bold text-warning">Link Expired</h2>
+      <p class="lead">{{ message }}</p>
+      <p>Please log in to your dashboard to manage your monitoring jobs.</p>
+      {% else %}
+      <div class="mb-3">
+        <i class="fas fa-exclamation-circle text-danger fa-4x"></i>
+      </div>
+      <h2 class="fw-bold text-danger">Error</h2>
+      <p class="lead">{{ message }}</p>
+      {% endif %}
+    </div>
+
+    <div class="d-grid gap-2 col-lg-8 mx-auto">
+      <a href="{{ url_for('lookup') }}" class="btn btn-primary btn-lg">
+        <i class="fas fa-tachometer-alt me-2"></i>
+        Go to Dashboard
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
