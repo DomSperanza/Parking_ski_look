@@ -1,18 +1,15 @@
-# Ski Resort Parking Scraper
+# Ski Resort Parking Monitor
 
-Ever find yourself obsessing over the one parking slot that could save your ski day? Welcome to the **Ski Resort Parking Scraper** – the little Python script that does the heavy lifting for you and leaves you more time to shred the slopes (or at least wait in less maddening driveways)!
+Ever find yourself obsessing over the one parking slot that could save your ski day? Welcome to the **Ski Resort Parking Monitor** – the web application that does the heavy lifting for you and leaves you more time to shred the slopes!
 
 ## What It Does
 
-This quirky script:
-- **Monitors Multiple Ski Resorts:** It checks the parking reservation pages of your fave resorts (because one resort just isn't enough).
-- **Detects Appointment Availability:** By examining the *background color* on the target appointment (e.g., "Sunday, March 16, 2025"), it determines if that oh-so-coveted slot is free.
-- **Sends Email Notifications:** When a parking slot becomes available, you get an email to let you know that the parking gods have smiled upon you.
-- **Prevents Email Spamming:** Don't worry about your inbox getting spammed – once it sends an email, it holds off until the slot goes back to being unavailable and then available again.
-
-## Why You'd Want This
-
-Imagine being able to sit back with hot cocoa while your computer scans resort pages for that elusive parking spot. No more manually refreshing, no more F5-frenzy – our script will do it all while you enjoy your ski vacation prep (or simply binge-watch your favorite show).
+This application:
+- **Monitors Multiple Ski Resorts:** Checks parking reservation pages for Brighton, Solitude, Alta, and Park City.
+- **Web Interface:** Easy-to-use web dashboard to manage your monitoring jobs.
+- **Smart Detection:** Uses advanced scraping to detect availability even on tricky dynamic pages.
+- **Email Notifications:** Sends you an email with a "Book Now" link the moment a spot opens up.
+- **Spam Prevention:** Pauses monitoring after sending a notification, with a one-click "Continue Monitoring" link if you missed the spot.
 
 ## How to Use It
 
@@ -22,59 +19,80 @@ Imagine being able to sit back with hot cocoa while your computer scans resort p
 
    ```bash
    git clone https://github.com/DomSperanza/Parking_ski_look.git
-   cd parking-scraper
+   cd Parking_ski_look
    ```
 
 2. **Install Dependencies:**
-
-   This project depends on several Python packages. Install them with:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-   *Note:* If you're using Chrome, the included `webdriver_manager` will handle the ChromeDriver for you. Otherwise, ensure your preferred driver is configured.
-
 3. **Set Up Environment Variables:**
 
-   Create a `.env` file in the root directory (this file is ignored by Git so your secrets stay secret!). Add the following:
+   Create a `.env` file in the root directory:
 
    ```ini
-   SENDER_EMAIL=your_email@example.com
-   SENDER_PASSWORD=yourpassword
-   RECEIVER_EMAILS=receiver1@example.com,receiver2@example.com
+   # Flask App
+   SECRET_KEY=your-secret-key
+   
+   # Email Configuration (Gmail example)
+   MAIL_SERVER=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USERNAME=your_email@gmail.com
+   MAIL_PASSWORD=your_app_password
+   MAIL_USE_TLS=True
+   MAIL_DEFAULT_SENDER=your_email@gmail.com
+   
+   # Base URL for links in emails (optional, defaults to localhost:5000)
+   BASE_URL=http://localhost:5000
    ```
 
-### Running the Script
+### Running the Application
 
-Simply run: 
+1. **Start the Web App:**
+
+   ```bash
+   python main.py
+   ```
+
+   The app will start at `http://0.0.0.0:5000`.
+
+2. **Start the Monitoring Daemon:**
+
+   To enable background monitoring, you need to run the daemon service:
+
+   ```bash
+   python services/monitoring_daemon.py
+   ```
+
+   *Note: In a production environment, you should run this as a systemd service or using a process manager like Supervisor.*
+
+### Using the App
+
+1. Go to `http://localhost:5000`.
+2. Select your resorts and dates.
+3. Enter your email and create a 6-digit PIN.
+4. Sit back and relax! You'll get an email when parking is found.
+5. Use the "Lookup" page to check your active jobs or delete them.
+
+## Development
+
+### Running Tests
 
 ```bash
-python parking_scraperV2.py
+python -m pytest tests/
 ```
 
-The script will launch a dedicated browser window for each resort URL you've listed, continuously check for the availability of the target appointment, and send you an email alert when it detects a change – all while you can kick back and relax!
+### Directory Structure
 
-## How It Works (The Techy Stuff)
-
-- **Page Automation:**  
-  Selenium automates Chrome to load the dynamic reservation pages and check for specific elements (identified by `aria-label`).
-
-- **Color-Based Detection:**  
-  The script inspects the element's background color. If it doesn't match the "unavailable" color (`rgba(247, 205, 212, 1)`), it figures out that the slot might be available.
-
-- **State Tracking:**  
-  Prevents spamming by tracking notifications per appointment. Once an email is sent, it waits until the appointment goes back to being unavailable before sending another.
-
-- **Email Alerts:**  
-  It uses Python's built-in `smtplib` to send email alerts so you never miss out on that precious parking spot.
-
-## Contributing
-
-Got ideas? Want to add more hilarity or features to this project? Fork it, create a pull request, and join the fun. After all, sharing is caring – especially when it comes to blaring email notifications about parking spots!
+- `webapp/`: Flask web application code.
+- `services/`: Background monitoring daemon.
+- `monitoring/`: Core scraping logic.
+- `config/`: Database models and configuration.
+- `scripts/`: Utility scripts for database management.
+- `tests/`: Unit and integration tests.
 
 ## License
 
-Released under the MIT License. Do what you want, but if you improve the parking conditions for everyone else, we'd love to hear about it!
-
-Happy coding and may your parking always be available!
+Released under the MIT License. Happy skiing!
