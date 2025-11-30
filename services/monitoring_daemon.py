@@ -11,11 +11,15 @@ import logging
 import signal
 import random
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load env vars
+load_dotenv()
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from config.database import get_active_monitoring_jobs
+from config.database import get_active_monitoring_jobs, delete_expired_jobs
 from monitoring.parking_scraper_v3 import check_monitoring_jobs
 from webapp.app import create_app
 
@@ -60,10 +64,8 @@ def main():
     # Create app for context
     app = create_app()
 
-    # Base interval and jitter range (in seconds)
+    # Base interval (in seconds)
     BASE_INTERVAL = 60
-    JITTER_MIN = 10
-    JITTER_MAX = 60
 
     try:
         with app.app_context():
@@ -72,6 +74,9 @@ def main():
                 logger.info(f"=== Monitoring Cycle #{cycle_count} ===")
 
                 try:
+                    # Cleanup expired jobs
+                    delete_expired_jobs()
+
                     # Get active jobs count for logging
                     jobs = get_active_monitoring_jobs()
                     job_count = len(jobs)
@@ -88,7 +93,16 @@ def main():
                     logger.error(f"Error in monitoring cycle: {e}", exc_info=True)
 
                 # Calculate wait time with jitter
-                wait_time = BASE_INTERVAL + random.randint(JITTER_MIN, JITTER_MAX)
+                # Increased jitter for stealth (30s to 2m)
+                wait_time = BASE_INTERVAL + random.randint(30, 120)
+
+                # Occasional long pause (5% chance) to simulate user taking a break
+                if random.random() < 0.05:
+                    long_pause = random.randint(300, 600)  # 5-10 minutes
+                    logger.info(
+                        f"Taking a long break for {long_pause} seconds (stealth mode)..."
+                    )
+                    wait_time += long_pause
 
                 if running:
                     logger.info(f"Waiting {wait_time} seconds before next cycle...")

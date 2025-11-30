@@ -75,3 +75,6 @@ dmypy.json
 
 #all .csv
 *.csv
+
+#Chrome profile
+chrome_profile  

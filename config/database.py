@@ -276,6 +276,27 @@ def delete_monitoring_job(job_id, user_id):
     finally:
         session.close()
 
+def delete_expired_jobs():
+    """
+    Delete monitoring jobs for dates that have passed.
+    """
+    session = get_db_session()
+    try:
+        today = datetime.now().date()
+        stmt = delete(MonitoringJob).where(MonitoringJob.target_date < today)
+        result = session.execute(stmt)
+        session.commit()
+        
+        if result.rowcount > 0:
+            logger.info(f"Cleaned up {result.rowcount} expired monitoring jobs")
+        return result.rowcount
+    except Exception as e:
+        logger.error(f"Error cleaning up expired jobs: {e}")
+        session.rollback()
+        return 0
+    finally:
+        session.close()
+
 def create_user(email, pin, first_name=None, last_name=None, timezone='America/Denver'):
     """
     Create a new user.

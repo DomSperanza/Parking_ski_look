@@ -1,0 +1,47 @@
+{% extends "base.html" %} {% block title %}Monitoring Stopped - Ski Parking Monitor{%
+endblock %} {% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="text-center mb-4">
+      {% if status == 'success' %}
+      <div class="mb-3">
+        <i class="fas fa-check-circle text-success fa-4x"></i>
+      </div>
+      <h2 class="fw-bold text-success">Monitoring Stopped</h2>
+      <p class="lead">
+        Great! We're glad you found parking. 
+        {% if job %}
+        We have removed the monitoring job for <strong>{{ job.resort_name }}</strong> on <strong>{{ job.target_date }}</strong>.
+        {% else %}
+        We have removed the monitoring job.
+        {% endif %}
+      </p>
+      <p class="text-muted">
+        Enjoy your ski day!
+      </p>
+      {% elif status == 'expired' %}
+      <div class="mb-3">
+        <i class="fas fa-clock text-warning fa-4x"></i>
+      </div>
+      <h2 class="fw-bold text-warning">Link Expired</h2>
+      <p class="lead">{{ message }}</p>
+      <p>Please log in to your dashboard if you need to make changes.</p>
+      {% else %}
+      <div class="mb-3">
+        <i class="fas fa-exclamation-circle text-danger fa-4x"></i>
+      </div>
+      <h2 class="fw-bold text-danger">Error</h2>
+      <p class="lead">{{ message }}</p>
+      {% endif %}
+    </div>
+
+    <div class="d-grid gap-2 col-lg-8 mx-auto">
+      <a href="{{ url_for('home') }}" class="btn btn-primary btn-lg">
+        <i class="fas fa-home me-2"></i>
+        Back to Home
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
