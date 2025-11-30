@@ -177,11 +177,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border: none;
   color: white;
   font-weight: 700;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .btn-warning:hover {
   background: linear-gradient(45deg, #ff8c00, #ffc107);
   color: white;
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(255, 193, 7, 0.4);
 }
 
 /* Footer styling */
