@@ -4,28 +4,33 @@ Test script to check all December 2025 dates for parking availability across all
 
 import sys
 from pathlib import Path
-import csv
+
 
 sys.path.append(str(Path(__file__).parent.parent))
 
 from monitoring.parking_scraper_v3 import check_multiple_dates
 from datetime import datetime, timedelta
 
-# Resorts list - using resorts.csv
-RESORTS_CSV = Path(__file__).parent.parent / "data" / "csvs" / "resorts.csv"
+from config.database import get_db_session
+from config.models import Resort
+from sqlalchemy import select
 
 def get_resorts():
-    """Load resorts from CSV file."""
-    resorts = []
-    with open(RESORTS_CSV, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row['status'] == 'active':
-                resorts.append({
-                    'name': row['resort_name'],
-                    'url': row['resort_url']
-                })
-    return resorts
+    """Load resorts from database."""
+    session = get_db_session()
+    try:
+        stmt = select(Resort).where(Resort.status == 'active')
+        results = session.execute(stmt).scalars().all()
+        
+        resorts = []
+        for r in results:
+            resorts.append({
+                'name': r.resort_name,
+                'url': r.resort_url
+            })
+        return resorts
+    finally:
+        session.close()
 
 def get_december_dates():
     """Generate all dates in December 2025."""

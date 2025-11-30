@@ -11,6 +11,7 @@ Tests the complete monitoring flow:
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+from sqlalchemy import select, delete, func
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -20,10 +21,12 @@ from config.database import (
     create_monitoring_job,
     get_active_monitoring_jobs,
     get_notification_history,
-    get_db_connection,
+    get_db_session,
     log_check_result
 )
+from config.models import User, MonitoringJob, Notification, CheckLog, Resort
 from monitoring.parking_scraper_v3 import check_monitoring_jobs
+from webapp.app import create_app
 
 
 def create_test_user():
@@ -66,26 +69,19 @@ def create_test_job(user_id, resort_id=1, days_ahead=None):
 
 def cleanup_test_data(user_id):
     """Clean up test data."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    session = get_db_session()
     
     try:
-        # Delete notifications
-        cursor.execute('DELETE FROM notifications WHERE user_id = ?', (user_id,))
-        
-        # Delete monitoring jobs
-        cursor.execute('DELETE FROM monitoring_jobs WHERE user_id = ?', (user_id,))
-        
-        # Delete user
-        cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
-        
-        conn.commit()
+        # Delete user (cascade will handle jobs and notifications)
+        stmt = delete(User).where(User.user_id == user_id)
+        session.execute(stmt)
+        session.commit()
         print(f"Cleaned up test data for user {user_id}")
     except Exception as e:
         print(f"Error cleaning up test data: {e}")
-        conn.rollback()
+        session.rollback()
     finally:
-        conn.close()
+        session.close()
 
 
 def main():
@@ -100,15 +96,13 @@ def main():
     # Clean up any old test data first (optional, but helps ensure clean test)
     print("\n0. Cleaning any old test data from previous runs...")
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
         # Delete old test users (email ends with @example.com)
-        cursor.execute("DELETE FROM notifications WHERE user_id IN (SELECT user_id FROM users WHERE email LIKE '%@example.com')")
-        cursor.execute("DELETE FROM monitoring_jobs WHERE user_id IN (SELECT user_id FROM users WHERE email LIKE '%@example.com')")
-        cursor.execute("DELETE FROM users WHERE email LIKE '%@example.com'")
-        deleted_count = cursor.rowcount
-        conn.commit()
-        conn.close()
+        stmt = delete(User).where(User.email.like('%@example.com'))
+        result = session.execute(stmt)
+        deleted_count = result.rowcount
+        session.commit()
+        session.close()
         if deleted_count > 0:
             print(f"   Cleaned {deleted_count} old test users")
     except Exception as e:
@@ -154,41 +148,44 @@ def main():
         # Step 4: Run single check cycle (headless mode)
         print("\n4. Running single check cycle...")
         print("   (Running in headless mode - checking all 4 resorts for December 13, 2025)")
-        check_monitoring_jobs()
+        
+        app = create_app()
+        with app.app_context():
+            check_monitoring_jobs()
+            
         print("   Check cycle completed")
         
         # Step 5: Verify logs were created for all resorts
         print("\n5. Verifying check logs for all resorts...")
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        session = get_db_session()
         
-        cursor.execute('''
-            SELECT resort_id, COUNT(*) as count
-            FROM check_logs
-            WHERE resort_id IN (1, 2, 3, 4)
-            AND check_timestamp > datetime('now', '-5 minutes')
-            GROUP BY resort_id
-            ORDER BY resort_id
-        ''')
+        cutoff_time = datetime.now() - timedelta(minutes=5)
+        stmt = (
+            select(CheckLog.resort_id, func.count(CheckLog.log_id).label('count'))
+            .where(CheckLog.resort_id.in_([1, 2, 3, 4]))
+            .where(CheckLog.check_timestamp > cutoff_time)
+            .group_by(CheckLog.resort_id)
+            .order_by(CheckLog.resort_id)
+        )
         
-        log_results = cursor.fetchall()
-        total_logs = sum(r['count'] for r in log_results)
+        log_results = session.execute(stmt).all()
+        total_logs = sum(r.count for r in log_results)
         
         resort_names = {1: 'Brighton', 2: 'Solitude', 3: 'Alta', 4: 'Park City'}
         print(f"   Total check logs created in last 5 minutes: {total_logs}")
         for result in log_results:
-            resort_id = result['resort_id']
-            count = result['count']
+            resort_id = result.resort_id
+            count = result.count
             resort_name = resort_names.get(resort_id, f'Resort {resort_id}')
             print(f"     - {resort_name} (ID {resort_id}): {count} log(s)")
         
         # Verify all 4 resorts were checked
-        checked_resorts = {r['resort_id'] for r in log_results}
+        checked_resorts = {r.resort_id for r in log_results}
         if len(checked_resorts) < 4:
             missing = set(range(1, 5)) - checked_resorts
             print(f"   WARNING: Missing logs for resort(s): {missing}")
         
-        conn.close()
+        session.close()
         
         # Step 6: Verify notifications (if any were sent)
         print("\n6. Checking notification history...")
