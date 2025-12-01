@@ -39,12 +39,17 @@ document.addEventListener("DOMContentLoaded", function () {
   // Show loading state on form submission
   const forms = document.querySelectorAll("form");
   forms.forEach((form) => {
-    form.addEventListener("submit", function () {
+    form.addEventListener("submit", function (e) {
       const submitBtn = form.querySelector('button[type="submit"]');
       if (submitBtn) {
-        submitBtn.innerHTML =
-          '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
-        submitBtn.disabled = true;
+        // Delay disabling to check if form submission was prevented by validation
+        setTimeout(() => {
+          if (!e.defaultPrevented) {
+            submitBtn.innerHTML =
+              '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Processing...';
+            submitBtn.disabled = true;
+          }
+        }, 0);
       }
     });
   });
