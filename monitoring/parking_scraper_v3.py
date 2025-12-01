@@ -66,7 +66,14 @@ def get_driver(headless=True):
     If running with pyvirtualdisplay (Display), we should run with headless=False 
     inside the virtual display to bypass detection.
     """
-    
+    # Check Chrome version for debugging
+    import subprocess
+    try:
+        result = subprocess.run(["google-chrome", "--version"], capture_output=True, text=True)
+        logger.info(f"System Chrome version: {result.stdout.strip()}")
+    except Exception as e:
+        logger.warning(f"Could not determine Chrome version: {e}")
+
     # If we have a virtual display, we can run 'headed' inside it, which is stealthier
     if HAS_DISPLAY:
         # Override the headless argument if we have a display
@@ -80,6 +87,7 @@ def get_driver(headless=True):
         # options.add_argument("--headless=new") # Removed to let UC handle it
         
         options.add_argument("--no-sandbox")
+        options.add_argument("--disable-setuid-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         
