@@ -41,8 +41,9 @@ services:
       - MAIL_USERNAME=${MAIL_USERNAME}
       - MAIL_PASSWORD=${MAIL_PASSWORD}
       - BASE_URL=${BASE_URL}
-    # Run with xvfb-run to support headless chrome with display
-    command: sh -c "xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' python services/monitoring_daemon.py"
+    # Run python directly, let pyvirtualdisplay handle Xvfb
+    command: python services/monitoring_daemon.py
+    shm_size: '1.5gb'
 
   nginx:
     image: nginx:1.21-alpine
