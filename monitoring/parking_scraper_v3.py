@@ -7,6 +7,7 @@ Uses undetected-chromedriver to bypass anti-bot measures.
 """
 
 import sys
+import os
 from pathlib import Path
 import time
 import re
@@ -18,7 +19,12 @@ from bs4 import BeautifulSoup
 # Enforce undetected_chromedriver
 try:
     import undetected_chromedriver as uc
-    USE_UNDETECTED = True
+    # Allow disabling via environment variable for debugging
+    if os.environ.get("USE_UNDETECTED_CHROMEDRIVER", "true").lower() == "false":
+        USE_UNDETECTED = False
+        logger.info("Undetected ChromeDriver disabled by environment variable.")
+    else:
+        USE_UNDETECTED = True
 except ImportError:
     # Fallback only if absolutely necessary, but warn heavily
     USE_UNDETECTED = False
@@ -106,10 +112,20 @@ def get_driver(headless=True):
         # Undetected chromedriver handles user-agent and automation flags automatically
         # Fix version mismatch by specifying version_main (User has Chrome 139)
         # headless=headless ensures correct patching for headless mode
+        
+        # Attempt to find chrome binary
+        chrome_path = "/usr/bin/google-chrome"
+        if not os.path.exists(chrome_path):
+             # Fallback or try to find it
+             import shutil
+             chrome_path = shutil.which("google-chrome") or shutil.which("google-chrome-stable")
+
         driver = uc.Chrome(
             options=options,
             headless=headless,
             use_subprocess=True,
+            browser_executable_path=chrome_path,
+            version_main=142 # explicit version match for stability
         )
         return driver
     else:
