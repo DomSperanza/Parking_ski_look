@@ -98,7 +98,11 @@ def get_driver(headless=True):
         # Undetected chromedriver handles user-agent and automation flags automatically
         # Fix version mismatch by specifying version_main (User has Chrome 139)
         # headless=headless ensures correct patching for headless mode
-        driver = uc.Chrome(options=options, version_main=139, headless=headless)
+        driver = uc.Chrome(
+            options=options,
+            headless=headless,
+            use_subprocess=True,
+        )
         return driver
     else:
         logger.warning("undetected-chromedriver not found! This is highly detectable.")
