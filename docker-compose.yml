@@ -41,8 +41,6 @@ services:
       - MAIL_USERNAME=${MAIL_USERNAME}
       - MAIL_PASSWORD=${MAIL_PASSWORD}
       - BASE_URL=${BASE_URL}
-      # Set to 'false' to use standard Selenium if Undetected Chrome fails
-      - USE_UNDETECTED_CHROMEDRIVER=true
     # Run python directly, let pyvirtualdisplay handle Xvfb
     command: python services/monitoring_daemon.py
     shm_size: '1.5gb'

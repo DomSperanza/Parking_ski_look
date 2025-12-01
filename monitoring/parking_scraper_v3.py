@@ -16,22 +16,10 @@ import random
 import json
 from bs4 import BeautifulSoup
 
-# Enforce undetected_chromedriver
-try:
-    import undetected_chromedriver as uc
-    # Allow disabling via environment variable for debugging
-    if os.environ.get("USE_UNDETECTED_CHROMEDRIVER", "true").lower() == "false":
-        USE_UNDETECTED = False
-        logger.info("Undetected ChromeDriver disabled by environment variable.")
-    else:
-        USE_UNDETECTED = True
-except ImportError:
-    # Fallback only if absolutely necessary, but warn heavily
-    USE_UNDETECTED = False
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.chrome.options import Options
-    from webdriver_manager.chrome import ChromeDriverManager
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -68,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 def get_driver(headless=True):
     """
-    Get a configured Chrome driver (undetected or standard).
+    Get a configured Chrome driver.
     If running with pyvirtualdisplay (Display), we should run with headless=False 
     inside the virtual display to bypass detection.
     """
@@ -86,79 +74,37 @@ def get_driver(headless=True):
         headless = False
         logger.info("Using pyvirtualdisplay: Running Chrome in HEADED mode (hidden in virtual display)")
     
-    if USE_UNDETECTED:
-        options = uc.ChromeOptions()
-        
-        # Do NOT set --headless argument manually for UC, use the headless arg in uc.Chrome()
-        # options.add_argument("--headless=new") # Removed to let UC handle it
-        
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-setuid-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        
-        # Enable logging
-        options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
+    chrome_options = Options()
+    if headless:
+        chrome_options.add_argument("--headless=new")
+    
+    # Critical flags for Docker environment
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-setuid-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    # Enable logging
+    chrome_options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
 
-        # Profile persistence (helps with trust)
-        profile_path = Path(__file__).parent.parent / "chrome_profile"
-        options.add_argument(f"--user-data-dir={profile_path}")
-        
-        # Randomize window size slightly to look more natural
-        width = random.randint(1024, 1920)
-        height = random.randint(768, 1080)
-        options.add_argument(f"--window-size={width},{height}")
-        
-        # Undetected chromedriver handles user-agent and automation flags automatically
-        # Fix version mismatch by specifying version_main (User has Chrome 139)
-        # headless=headless ensures correct patching for headless mode
-        
-        # Attempt to find chrome binary
-        chrome_path = "/usr/bin/google-chrome"
-        if not os.path.exists(chrome_path):
-             # Fallback or try to find it
-             import shutil
-             chrome_path = shutil.which("google-chrome") or shutil.which("google-chrome-stable")
-
-        driver = uc.Chrome(
-            options=options,
-            headless=headless,
-            use_subprocess=True,
-            browser_executable_path=chrome_path,
-            version_main=142 # explicit version match for stability
-        )
-        return driver
-    else:
-        logger.warning("undetected-chromedriver not found! This is highly detectable.")
-        chrome_options = Options()
-        if headless:
-            chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-setuid-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        
-        # Enable logging
-        chrome_options.set_capability('goog:loggingPrefs', {'browser': 'ALL'})
-
-        # Anti-detection and headers
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=chrome_options
-        )
-        
-        # Execute CDP commands to modify headers
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        })
-        
-        return driver
+    # Anti-detection and headers
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=chrome_options
+    )
+    
+    # Execute CDP commands to modify headers
+    driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    })
+    
+    return driver
 
 
 def simulate_human_behavior(driver):
