@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  db-viewer:
+    image: coleifer/sqlite-web
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    command: sqlite_web /data/parking_monitor.db -H 0.0.0.0 -p 8080
+    restart: unless-stopped
