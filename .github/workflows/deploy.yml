@@ -23,6 +23,10 @@ jobs:
             # Pull the latest changes
             git pull
             
+            # Stop and remove old containers to avoid name conflicts
+            # We use || true so it doesn't fail if they don't exist
+            docker rm -f parking_daemon parking_webapp || true
+            
             # Rebuild and restart containers
             # We rebuild to ensure any Dockerfile changes (like the recent fix) are applied
             docker-compose up -d --build daemon webapp
