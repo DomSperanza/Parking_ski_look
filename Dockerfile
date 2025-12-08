@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libgbm1 \
     xauth \
-    xkeyboard-config \
+    xkb-data \
     dbus-x11 \
     xfonts-base \
     xfonts-100dpi \
