@@ -19,6 +19,14 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 \
     libgtk-3-0 \
     libgbm1 \
+    xauth \
+    xkeyboard-config \
+    dbus-x11 \
+    xfonts-base \
+    xfonts-100dpi \
+    xfonts-75dpi \
+    xfonts-cyrillic \
+    xfonts-scalable \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
