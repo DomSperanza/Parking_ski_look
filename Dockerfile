@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y \
     xfonts-75dpi \
     xfonts-cyrillic \
     xfonts-scalable \
+    x11-xkb-utils \
+    xkeyboard-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
