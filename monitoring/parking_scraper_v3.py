@@ -24,6 +24,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 # Try to import pyvirtualdisplay for headless bypass
@@ -111,22 +112,64 @@ def get_driver(headless=True):
 
 def simulate_human_behavior(driver):
     """
-    Simulate human-like behavior (scrolling, random pauses).
+    Simulate realistic human-like behavior (scrolling, pauses, mouse movements).
     """
     try:
-        # Random small pause
-        time.sleep(random.uniform(1.0, 3.0))
-
-        # Random scroll
-        scroll_amount = random.randint(100, 500)
-        driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
-        time.sleep(random.uniform(0.5, 1.5))
-
-        # Scroll back up a bit sometimes
+        from selenium.webdriver.common.action_chains import ActionChains
+        
+        actions = ActionChains(driver)
+        
+        # Initial pause - like a human reading the page
+        time.sleep(random.uniform(2.0, 4.0))
+        
+        # Smooth scrolling down (like reading the page)
+        scroll_steps = random.randint(3, 6)
+        for _ in range(scroll_steps):
+            scroll_amount = random.randint(150, 400)
+            # Smooth scroll using JavaScript
+            driver.execute_script(f"window.scrollBy({{top: {scroll_amount}, behavior: 'smooth'}});")
+            time.sleep(random.uniform(0.8, 2.0))  # Pause between scrolls like reading
+        
+        # Sometimes scroll back up a bit (like re-reading something)
+        if random.random() > 0.6:
+            back_scroll = random.randint(100, 300)
+            driver.execute_script(f"window.scrollBy({{top: -{back_scroll}, behavior: 'smooth'}});")
+            time.sleep(random.uniform(1.0, 2.5))
+        
+        # Random mouse movement simulation (hover over elements)
+        try:
+            # Try to find some interactive elements to hover over
+            buttons = driver.find_elements(By.TAG_NAME, "button")
+            links = driver.find_elements(By.TAG_NAME, "a")
+            all_elements = buttons + links
+            
+            if all_elements and random.random() > 0.4:
+                element = random.choice(all_elements[:10])  # Pick from first 10
+                try:
+                    # Move to element smoothly
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+                    time.sleep(random.uniform(0.3, 0.8))
+                    actions.move_to_element(element).pause(random.uniform(0.2, 0.5)).perform()
+                    time.sleep(random.uniform(0.5, 1.2))
+                except:
+                    pass
+        except:
+            pass
+        
+        # Sometimes move mouse to a random position (like moving cursor around)
         if random.random() > 0.7:
-            driver.execute_script(f"window.scrollBy(0, -{random.randint(50, 200)});")
-            time.sleep(random.uniform(0.5, 1.0))
-
+            try:
+                # Move to random position on page
+                x_offset = random.randint(-200, 200)
+                y_offset = random.randint(-200, 200)
+                actions.move_by_offset(x_offset, y_offset).perform()
+                time.sleep(random.uniform(0.3, 0.8))
+            except:
+                pass
+        
+        # Final pause before checking dates (like looking at calendar)
+        time.sleep(random.uniform(1.5, 3.0))
+        
     except Exception as e:
         logger.debug(f"Error simulating human behavior: {e}")
 
@@ -181,7 +224,6 @@ def scan_html_for_dates(html_content, date_list, console_logs=None):
     blocking_indicators = [
         "Please try again",
         "Access Denied",
-        "blocked",
         "forbidden",
         "cloudflare",
         "challenge",
@@ -189,6 +231,9 @@ def scan_html_for_dates(html_content, date_list, console_logs=None):
         "rate limit",
         "too many requests",
     ]
+    
+    # CORS errors are normal browser behavior, not blocking
+    cors_indicators = ["cors", "access-control-allow-origin"]
 
     blocking_found = False
     blocking_details = []
@@ -202,13 +247,20 @@ def scan_html_for_dates(html_content, date_list, console_logs=None):
     # Check console logs if provided
     if console_logs:
         console_text = " ".join(console_logs).lower()
+        # Filter out CORS errors (normal browser behavior)
+        non_cors_logs = [
+            log for log in console_logs 
+            if not any(cors_ind in log.lower() for cors_ind in cors_indicators)
+        ]
+        non_cors_text = " ".join(non_cors_logs).lower()
+        
         for indicator in blocking_indicators:
-            if indicator.lower() in console_text:
+            if indicator.lower() in non_cors_text:
                 blocking_found = True
                 blocking_details.append(f"Console contains: '{indicator}'")
                 # Log relevant console errors
                 relevant_logs = [
-                    log for log in console_logs if indicator.lower() in log.lower()
+                    log for log in non_cors_logs if indicator.lower() in log.lower()
                 ]
                 if relevant_logs:
                     logger.error(f"Console blocking indicators: {relevant_logs[:3]}")
@@ -265,6 +317,9 @@ def check_multiple_dates(resort_url, date_list):
 
         logger.info(f"Navigating to {resort_url}")
         driver.get(resort_url)
+        
+        # Wait for page to start loading (like a real browser)
+        time.sleep(random.uniform(1.5, 3.0))
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
@@ -280,15 +335,14 @@ def check_multiple_dates(resort_url, date_list):
             logger.error(f"BLOCKED: Page title indicates blocking: {page_title}")
             return {date_str: "blocked" for date_str in date_list}
 
-        # Simulate human behavior on load
+        # Wait for page to fully load (like a human waiting for content)
+        time.sleep(random.uniform(2.0, 4.0))
+        
+        # Simulate human behavior - browsing the page naturally
         simulate_human_behavior(driver)
-
-        # Add random delay before first check
-        time.sleep(random.uniform(2.0, 5.0))
-
-        # Wait for calendar to load
-        # We wait for a generic amount of time or try to find at least one date to ensure content is there
-        time.sleep(random.uniform(5.0, 10.0))
+        
+        # Additional pause - like looking at the calendar
+        time.sleep(random.uniform(2.0, 4.0))
 
         # Attempt to wait for the first date to appear, just to ensure we don't snapshot blank page
         # But don't fail if it doesn't appear (could be scrolling issue), just proceed to snapshot
