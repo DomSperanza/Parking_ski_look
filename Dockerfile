@@ -11,23 +11,6 @@ RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
-    xvfb \
-    libxi6 \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    libgbm1 \
-    xauth \
-    xkb-data \
-    dbus-x11 \
-    xfonts-base \
-    xfonts-100dpi \
-    xfonts-75dpi \
-    xfonts-cyrillic \
-    xfonts-scalable \
-    x11-xkb-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome

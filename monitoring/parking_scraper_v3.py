@@ -27,11 +27,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
 # Try to import pyvirtualdisplay for headless bypass
-try:
-    from pyvirtualdisplay import Display
-    HAS_DISPLAY = True
-except ImportError:
-    HAS_DISPLAY = False
+# Try to import pyvirtualdisplay for headless bypass
+# REMOVED: pyvirtualdisplay dependency - switching to native headless=new
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -57,8 +54,6 @@ logger = logging.getLogger(__name__)
 def get_driver(headless=True):
     """
     Get a configured Chrome driver.
-    If running with pyvirtualdisplay (Display), we should run with headless=False 
-    inside the virtual display to bypass detection.
     """
     # Check Chrome version for debugging
     import subprocess
@@ -68,15 +63,11 @@ def get_driver(headless=True):
     except Exception as e:
         logger.warning(f"Could not determine Chrome version: {e}")
 
-    # If we have a virtual display, we can run 'headed' inside it, which is stealthier
-    if HAS_DISPLAY:
-        # Override the headless argument if we have a display
-        headless = False
-        logger.info("Using pyvirtualdisplay: Running Chrome in HEADED mode (hidden in virtual display)")
-    
     chrome_options = Options()
-    if headless:
-        chrome_options.add_argument("--headless=new")
+    
+    # Use new headless mode which is much better for detection avoidance
+    # and doesn't require Xvfb
+    chrome_options.add_argument("--headless=new")
     
     # Critical flags for Docker environment
     chrome_options.add_argument("--no-sandbox")
@@ -206,31 +197,13 @@ def check_multiple_dates(resort_url, date_list):
     Check availability for multiple dates by fetching the page source once and scanning it locally.
     """
     driver = None
-    display = None
     results = {}
     
     try:
-        # Start virtual display if available
-        if HAS_DISPLAY:
-            try:
-                display = Display(visible=0, size=(1920, 1080))
-                display.start()
-                logger.info("Virtual display started")
-            except Exception as e:
-                logger.error(f"Failed to start virtual display (xvfb missing?): {e}")
-                # Continue without display, get_driver will fallback to headless=True logic if needed
-                # But wait, get_driver logic depends on HAS_DISPLAY constant, not runtime success
-                # We'll need to handle that if get_driver uses HAS_DISPLAY but display failed.
-                pass
-
-        # If display failed to start, we should probably force headless=True in get_driver, 
-        # but get_driver uses the global HAS_DISPLAY. 
-        # For simplicity, if display.start() fails, we might crash or chrome might fail to open.
-        # We'll assume user installs xvfb as requested.
-        
-        # Pass headless=True as default, but get_driver overrides it if HAS_DISPLAY is True
+        # Use native headless driver (no virtual display)
         driver = get_driver(headless=True) 
         
+        logger.info(f"Navigating to {resort_url}")
         driver.get(resort_url)
         
         # Simulate human behavior on load
@@ -257,27 +230,8 @@ def check_multiple_dates(resort_url, date_list):
         except Exception as e:
             logger.info(f"Wait for first date element timed out or failed, proceeding to snapshot anyway: {e}")
 
-        timestamp = int(time.time())
-
-        # Export Console Logs
-        # (Disabled debug saving)
-        # try:
-        #     logs = driver.get_log('browser')
-        #     log_filename = f"debug_console_{timestamp}.json"
-        #     with open(log_filename, "w", encoding='utf-8') as f:
-        #         json.dump(logs, f, indent=2)
-        #     logger.info(f"Saved console logs to {log_filename}")
-        # except Exception as e:
-        #     logger.error(f"Failed to save console logs: {e}")
-
         # Export raw HTML
-        # filename = f"debug_scan_{timestamp}.html"
         html_content = driver.page_source
-        
-        # with open(filename, "w", encoding='utf-8') as f:
-        #     f.write(html_content)
-        
-        # logger.info(f"Saved raw HTML to {filename}")
         
         # Scan the local HTML file
         results = scan_html_for_dates(html_content, date_list)
@@ -294,11 +248,6 @@ def check_multiple_dates(resort_url, date_list):
         if driver:
             try:
                 driver.quit()
-            except:
-                pass
-        if display:
-            try:
-                display.stop()
             except:
                 pass
 
