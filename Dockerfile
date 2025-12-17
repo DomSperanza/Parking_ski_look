@@ -9,14 +9,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
+    curl \
     gnupg \
+    ca-certificates \
     unzip \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
-# Install Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg \
+# Download key file first, then process it
+RUN mkdir -p /usr/share/keyrings \
+    && (curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub -o /tmp/chrome-key.pub \
+        || curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /tmp/chrome-key.pub) \
+    && gpg --dearmor /tmp/chrome-key.pub -o /usr/share/keyrings/google-chrome.gpg \
+    && rm -f /tmp/chrome-key.pub \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
