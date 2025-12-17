@@ -42,7 +42,8 @@ services:
       - MAIL_PASSWORD=${MAIL_PASSWORD}
       - BASE_URL=${BASE_URL}
     # Start Xvfb for non-headless Chrome, then run daemon
-    command: sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && python services/monitoring_daemon.py"
+    # Clean up any stale Xvfb lock files before starting
+    command: sh -c "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 && Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && sleep 2 && python services/monitoring_daemon.py"
     shm_size: "512m"
     deploy:
       resources:

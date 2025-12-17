@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # Session management - keep drivers alive per resort
 _resort_drivers = {}  # {resort_url: driver}
 _driver_use_count = {}  # Track how many times each driver has been used
-_MAX_DRIVER_USES = 50  # Recreate driver after this many uses to prevent memory leaks
+_MAX_DRIVER_USES = 3  # Recreate driver frequently to avoid detection patterns
 _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
@@ -405,6 +405,10 @@ def get_or_create_driver(resort_url):
 
 def check_multiple_dates(resort_url, date_list, refresh_only=False):
     """
+    refresh_only parameter kept for compatibility but not used - always navigates fresh
+    to avoid refresh-triggered blocking
+    """
+    """
     Check availability for multiple dates by fetching the page source once and scanning it locally.
     If refresh_only is True and a session exists, just refresh the page instead of navigating.
     """
@@ -416,20 +420,13 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
         # Get or create driver for this resort
         driver, is_new_session = get_or_create_driver(resort_url)
         
-        if is_new_session or not refresh_only:
-            # New session or first time - navigate to page
-            logger.info(f"Navigating to {resort_url}")
-            driver.get(resort_url)
-            
-            # Wait for page to start loading (like a real browser)
-            time.sleep(random.uniform(1.5, 3.0))
-        else:
-            # Existing session - just refresh the page
-            logger.info(f"Refreshing page for {resort_url}")
-            driver.refresh()
-            
-            # Shorter wait for refresh
-            time.sleep(random.uniform(1.0, 2.0))
+        # Always navigate fresh (refresh was causing redirects/blocking)
+        # But keep browser session alive between navigations
+        logger.info(f"Navigating to {resort_url}")
+        driver.get(resort_url)
+        
+        # Wait for page to start loading (like a real browser)
+        time.sleep(random.uniform(1.5, 3.0))
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
@@ -545,8 +542,8 @@ def check_monitoring_jobs():
         time.sleep(random.uniform(3.0, 8.0))
 
         start_time = time.time()
-        # Use refresh_only=True to refresh existing session instead of navigating
-        results = check_multiple_dates(resort_url, dates, refresh_only=True)
+        # Navigate fresh but keep browser session alive
+        results = check_multiple_dates(resort_url, dates, refresh_only=False)
         duration = int((time.time() - start_time) * 1000)
 
         # Check if blocked
