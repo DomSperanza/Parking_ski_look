@@ -17,11 +17,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
-# Download key file first, then process it
+# Use wget to download key, verify it exists, then process
 RUN mkdir -p /usr/share/keyrings \
-    && (curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub -o /tmp/chrome-key.pub \
-        || curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /tmp/chrome-key.pub) \
-    && gpg --dearmor /tmp/chrome-key.pub -o /usr/share/keyrings/google-chrome.gpg \
+    && wget -q -O /tmp/chrome-key.pub https://dl-ssl.google.com/linux/linux_signing_key.pub \
+    || wget -q -O /tmp/chrome-key.pub https://dl.google.com/linux/linux_signing_key.pub \
+    && test -s /tmp/chrome-key.pub \
+    && gpg --dearmor < /tmp/chrome-key.pub > /usr/share/keyrings/google-chrome.gpg \
     && rm -f /tmp/chrome-key.pub \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
