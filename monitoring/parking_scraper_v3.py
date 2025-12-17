@@ -51,6 +51,12 @@ logger = logging.getLogger(__name__)
 # Green color for available dates (from HTML examples)
 # We'll check for the components (49, 200, 25) instead of strict string matching
 
+# Session management - keep drivers alive per resort
+_resort_drivers = {}  # {resort_url: driver}
+_driver_use_count = {}  # Track how many times each driver has been used
+_MAX_DRIVER_USES = 50  # Recreate driver after this many uses to prevent memory leaks
+_MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
+
 
 def get_driver(headless=True):
     """
@@ -78,6 +84,14 @@ def get_driver(headless=True):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--display=:99")
+    
+    # Memory-saving flags for low-RAM VPS
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-features=TranslateUI")
+    chrome_options.add_argument("--disable-ipc-flooding-protection")
+    chrome_options.add_argument("--memory-pressure-off")
 
     # Enable logging
     chrome_options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
@@ -304,22 +318,118 @@ def check_date_availability(resort_url, date_str):
     return check_multiple_dates(resort_url, [date_str])[date_str]
 
 
-def check_multiple_dates(resort_url, date_list):
+def cleanup_driver(resort_url):
+    """
+    Clean up driver for a specific resort (e.g., when blocked).
+    """
+    global _resort_drivers, _driver_use_count
+    if resort_url in _resort_drivers:
+        try:
+            _resort_drivers[resort_url].quit()
+        except:
+            pass
+        del _resort_drivers[resort_url]
+        if resort_url in _driver_use_count:
+            del _driver_use_count[resort_url]
+        logger.info(f"Cleaned up driver for {resort_url}")
+
+
+def cleanup_all_drivers():
+    """
+    Clean up all active drivers (e.g., on shutdown).
+    """
+    global _resort_drivers, _driver_use_count
+    for resort_url, driver in list(_resort_drivers.items()):
+        try:
+            driver.quit()
+        except:
+            pass
+    _resort_drivers.clear()
+    _driver_use_count.clear()
+    logger.info("Cleaned up all drivers")
+
+
+def get_or_create_driver(resort_url):
+    """
+    Get existing driver for resort or create a new one.
+    Returns driver and whether it was newly created.
+    """
+    global _resort_drivers, _driver_use_count
+    
+    # Check if we have an existing driver for this resort
+    if resort_url in _resort_drivers:
+        driver = _resort_drivers[resort_url]
+        use_count = _driver_use_count.get(resort_url, 0)
+        
+        # Check if driver is still alive
+        try:
+            # Try to get current URL to verify driver is responsive
+            _ = driver.current_url
+            # Check if we should recreate (prevent memory leaks)
+            if use_count >= _MAX_DRIVER_USES:
+                logger.info(f"Driver for {resort_url} has been used {use_count} times, recreating...")
+                try:
+                    driver.quit()
+                except:
+                    pass
+                del _resort_drivers[resort_url]
+                del _driver_use_count[resort_url]
+            else:
+                _driver_use_count[resort_url] = use_count + 1
+                return driver, False
+        except:
+            # Driver is dead, remove it
+            logger.warning(f"Driver for {resort_url} is no longer responsive, recreating...")
+            try:
+                driver.quit()
+            except:
+                pass
+            del _resort_drivers[resort_url]
+            if resort_url in _driver_use_count:
+                del _driver_use_count[resort_url]
+    
+    # Check if we're at the concurrent driver limit
+    if len(_resort_drivers) >= _MAX_CONCURRENT_DRIVERS:
+        # Close the least recently used driver (oldest by use count)
+        logger.warning(f"At max concurrent drivers ({_MAX_CONCURRENT_DRIVERS}), closing least used...")
+        oldest_url = min(_resort_drivers.keys(), key=lambda url: _driver_use_count.get(url, 0))
+        cleanup_driver(oldest_url)
+    
+    # Create new driver
+    logger.info(f"Creating new browser session for {resort_url}")
+    driver = get_driver(headless=False)
+    _resort_drivers[resort_url] = driver
+    _driver_use_count[resort_url] = 1
+    return driver, True
+
+
+def check_multiple_dates(resort_url, date_list, refresh_only=False):
     """
     Check availability for multiple dates by fetching the page source once and scanning it locally.
+    If refresh_only is True and a session exists, just refresh the page instead of navigating.
     """
     driver = None
     results = {}
+    is_new_session = False
 
     try:
-        # Use non-headless driver for better anti-bot evasion
-        driver = get_driver(headless=False)
-
-        logger.info(f"Navigating to {resort_url}")
-        driver.get(resort_url)
+        # Get or create driver for this resort
+        driver, is_new_session = get_or_create_driver(resort_url)
         
-        # Wait for page to start loading (like a real browser)
-        time.sleep(random.uniform(1.5, 3.0))
+        if is_new_session or not refresh_only:
+            # New session or first time - navigate to page
+            logger.info(f"Navigating to {resort_url}")
+            driver.get(resort_url)
+            
+            # Wait for page to start loading (like a real browser)
+            time.sleep(random.uniform(1.5, 3.0))
+        else:
+            # Existing session - just refresh the page
+            logger.info(f"Refreshing page for {resort_url}")
+            driver.refresh()
+            
+            # Shorter wait for refresh
+            time.sleep(random.uniform(1.0, 2.0))
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
@@ -378,16 +488,20 @@ def check_multiple_dates(resort_url, date_list):
 
     except WebDriverException as e:
         logger.error(f"WebDriver error: {e}")
+        # If driver error, remove it from cache so we recreate next time
+        if resort_url in _resort_drivers:
+            try:
+                _resort_drivers[resort_url].quit()
+            except:
+                pass
+            del _resort_drivers[resort_url]
+            if resort_url in _driver_use_count:
+                del _driver_use_count[resort_url]
         return {date_str: "blank" for date_str in date_list}
     except Exception as e:
         logger.error(f"Error: {e}")
         return {date_str: "blank" for date_str in date_list}
-    finally:
-        if driver:
-            try:
-                driver.quit()
-            except:
-                pass
+    # Don't close driver in finally - keep it alive for next check
 
 
 def check_monitoring_jobs():
@@ -431,12 +545,15 @@ def check_monitoring_jobs():
         time.sleep(random.uniform(3.0, 8.0))
 
         start_time = time.time()
-        results = check_multiple_dates(resort_url, dates)
+        # Use refresh_only=True to refresh existing session instead of navigating
+        results = check_multiple_dates(resort_url, dates, refresh_only=True)
         duration = int((time.time() - start_time) * 1000)
 
         # Check if blocked
         if any(r == "blocked" for r in results.values()):
             was_blocked = True
+            # Clean up driver for this resort when blocked
+            cleanup_driver(resort_url)
 
         # Log check result
         status = (

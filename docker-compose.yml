@@ -43,7 +43,13 @@ services:
       - BASE_URL=${BASE_URL}
     # Start Xvfb for non-headless Chrome, then run daemon
     command: sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && python services/monitoring_daemon.py"
-    shm_size: "1.5gb"
+    shm_size: "512m"
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
 
   nginx:
     image: nginx:1.21-alpine
