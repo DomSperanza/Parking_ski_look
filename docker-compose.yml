@@ -41,8 +41,8 @@ services:
       - MAIL_USERNAME=${MAIL_USERNAME}
       - MAIL_PASSWORD=${MAIL_PASSWORD}
       - BASE_URL=${BASE_URL}
-    # Run python directly, let pyvirtualdisplay handle Xvfb
-    command: python services/monitoring_daemon.py
+    # Start Xvfb for non-headless Chrome, then run daemon
+    command: sh -c "Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && python services/monitoring_daemon.py"
     shm_size: '1.5gb'
 
   nginx:

@@ -68,16 +68,15 @@ def get_driver(headless=True):
 
     chrome_options = Options()
 
-    # Use new headless mode which is much better for detection avoidance
-    # and doesn't require Xvfb
-    chrome_options.add_argument("--headless=new")
+    # Non-headless mode for better anti-bot evasion
+    # Note: Requires Xvfb in Docker environment
 
     # Critical flags for Docker environment
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-setuid-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--display=:99")
 
     # Enable logging
     chrome_options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
@@ -159,15 +158,64 @@ def is_green(style_attr):
     return False
 
 
-def scan_html_for_dates(html_content, date_list):
+def get_console_logs(driver):
+    """
+    Get browser console logs for debugging.
+    """
+    try:
+        logs = driver.get_log("browser")
+        return [log["message"] for log in logs]
+    except Exception as e:
+        logger.debug(f"Could not retrieve console logs: {e}")
+        return []
+
+
+def scan_html_for_dates(html_content, date_list, console_logs=None):
     """
     Parse HTML content with BeautifulSoup to check for date availability.
     """
     soup = BeautifulSoup(html_content, "html.parser")
+    page_text = soup.get_text()
 
-    # Check for blocked message
-    if "Please try again" in soup.get_text() or "Access Denied" in soup.get_text():
-        logger.error("BLOCKED: Detected anti-bot blocking message.")
+    # Check for blocked message in HTML
+    blocking_indicators = [
+        "Please try again",
+        "Access Denied",
+        "blocked",
+        "forbidden",
+        "cloudflare",
+        "challenge",
+        "captcha",
+        "rate limit",
+        "too many requests",
+    ]
+
+    blocking_found = False
+    blocking_details = []
+
+    # Check HTML content
+    for indicator in blocking_indicators:
+        if indicator.lower() in page_text.lower():
+            blocking_found = True
+            blocking_details.append(f"HTML contains: '{indicator}'")
+
+    # Check console logs if provided
+    if console_logs:
+        console_text = " ".join(console_logs).lower()
+        for indicator in blocking_indicators:
+            if indicator.lower() in console_text:
+                blocking_found = True
+                blocking_details.append(f"Console contains: '{indicator}'")
+                # Log relevant console errors
+                relevant_logs = [
+                    log for log in console_logs if indicator.lower() in log.lower()
+                ]
+                if relevant_logs:
+                    logger.error(f"Console blocking indicators: {relevant_logs[:3]}")
+
+    if blocking_found:
+        error_msg = f"BLOCKED: Detected anti-bot blocking. Details: {'; '.join(blocking_details)}"
+        logger.error(error_msg)
         return {date: "blocked" for date in date_list}
 
     results = {}
@@ -212,11 +260,25 @@ def check_multiple_dates(resort_url, date_list):
     results = {}
 
     try:
-        # Use native headless driver (no virtual display)
-        driver = get_driver(headless=True)
+        # Use non-headless driver for better anti-bot evasion
+        driver = get_driver(headless=False)
 
         logger.info(f"Navigating to {resort_url}")
         driver.get(resort_url)
+
+        # Check if we were redirected to a blocking page
+        current_url = driver.current_url
+        page_title = driver.title.lower()
+
+        if current_url != resort_url:
+            logger.warning(f"Redirected from {resort_url} to {current_url}")
+
+        if any(
+            indicator in page_title
+            for indicator in ["blocked", "access denied", "challenge", "captcha"]
+        ):
+            logger.error(f"BLOCKED: Page title indicates blocking: {page_title}")
+            return {date_str: "blocked" for date_str in date_list}
 
         # Simulate human behavior on load
         simulate_human_behavior(driver)
@@ -247,11 +309,16 @@ def check_multiple_dates(resort_url, date_list):
                 f"Wait for first date element timed out or failed, proceeding to snapshot anyway: {e}"
             )
 
+        # Get console logs before closing
+        console_logs = get_console_logs(driver)
+
         # Export raw HTML
         html_content = driver.page_source
 
-        # Scan the local HTML file
-        results = scan_html_for_dates(html_content, date_list)
+        # Scan the local HTML file with console logs
+        results = scan_html_for_dates(
+            html_content, date_list, console_logs=console_logs
+        )
 
         return results
 
