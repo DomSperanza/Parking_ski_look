@@ -64,8 +64,8 @@ def main():
     # Create app for context
     app = create_app()
 
-    # Base interval (in seconds) - increased for better stealth
-    BASE_INTERVAL = 120  # 2 minutes base
+    # Base interval (in seconds) - faster checking when not blocked
+    BASE_INTERVAL = 30  # 30 seconds base for frequent checking
 
     try:
         with app.app_context():
@@ -73,6 +73,7 @@ def main():
                 cycle_count += 1
                 logger.info(f"=== Monitoring Cycle #{cycle_count} ===")
 
+                was_blocked = False
                 try:
                     # Cleanup expired jobs
                     delete_expired_jobs()
@@ -83,7 +84,7 @@ def main():
 
                     if job_count > 0:
                         logger.info(f"Processing {job_count} active monitoring jobs")
-                        check_monitoring_jobs()
+                        was_blocked = check_monitoring_jobs()
                     else:
                         logger.info("No active monitoring jobs. Waiting...")
 
@@ -92,25 +93,16 @@ def main():
                 except Exception as e:
                     logger.error(f"Error in monitoring cycle: {e}", exc_info=True)
 
-                # Calculate wait time with jitter
-                # Increased jitter for stealth (2-5 minutes)
-                wait_time = BASE_INTERVAL + random.randint(60, 180)
-
-                # More frequent long pauses (15% chance) to simulate user taking breaks
-                if random.random() < 0.15:
-                    long_pause = random.randint(600, 1200)  # 10-20 minutes
-                    logger.info(
-                        f"Taking a long break for {long_pause} seconds (stealth mode)..."
+                # Calculate wait time
+                if was_blocked:
+                    # If blocked, take a long break (30-60 minutes)
+                    wait_time = random.randint(1800, 3600)  # 30-60 minutes
+                    logger.warning(
+                        f"BLOCKED DETECTED! Taking extended cooldown: {wait_time} seconds ({wait_time//60} minutes)..."
                     )
-                    wait_time += long_pause
-                
-                # After every 20 cycles, take an extended break (30-60 minutes)
-                if cycle_count % 20 == 0:
-                    extended_break = random.randint(1800, 3600)  # 30-60 minutes
-                    logger.info(
-                        f"Extended cooldown after {cycle_count} cycles: {extended_break} seconds..."
-                    )
-                    wait_time += extended_break
+                else:
+                    # Normal operation - check frequently with small jitter
+                    wait_time = BASE_INTERVAL + random.randint(10, 30)  # 30-60 seconds
 
                 if running:
                     logger.info(f"Waiting {wait_time} seconds before next cycle...")

@@ -393,12 +393,13 @@ def check_multiple_dates(resort_url, date_list):
 def check_monitoring_jobs():
     """
     Main function to check all active monitoring jobs.
+    Returns True if any resort was blocked, False otherwise.
     """
     jobs = get_active_monitoring_jobs()
 
     if not jobs:
         logger.info("No active jobs to check.")
-        return
+        return False
 
     # Group jobs by resort to minimize browser sessions
     resort_jobs = {}
@@ -415,6 +416,9 @@ def check_monitoring_jobs():
         resort_jobs[resort_url]["dates"].add(job["target_date"])
         resort_jobs[resort_url]["jobs"].append(job)
 
+    # Track if any resort was blocked
+    was_blocked = False
+    
     # Process each resort
     for resort_url, data in resort_jobs.items():
         resort_name = data["resort_name"]
@@ -429,6 +433,10 @@ def check_monitoring_jobs():
         start_time = time.time()
         results = check_multiple_dates(resort_url, dates)
         duration = int((time.time() - start_time) * 1000)
+
+        # Check if blocked
+        if any(r == "blocked" for r in results.values()):
+            was_blocked = True
 
         # Log check result
         status = (
@@ -484,3 +492,5 @@ def check_monitoring_jobs():
                 logger.warning(
                     f"Could not check status: {resort_name} on {target_date}"
                 )
+    
+    return was_blocked
