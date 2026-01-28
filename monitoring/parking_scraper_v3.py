@@ -20,6 +20,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+import undetected_chromedriver as uc
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -60,7 +61,7 @@ _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB V
 
 def get_driver(headless=True):
     """
-    Get a configured Chrome driver.
+    Get a configured Chrome driver using undetected-chromedriver.
     """
     # Check Chrome version for debugging
     import subprocess
@@ -73,10 +74,7 @@ def get_driver(headless=True):
     except Exception as e:
         logger.warning(f"Could not determine Chrome version: {e}")
 
-    chrome_options = Options()
-
-    # Non-headless mode for better anti-bot evasion
-    # Note: Requires Xvfb in Docker environment
+    chrome_options = uc.ChromeOptions()
 
     # Critical flags for Docker environment
     chrome_options.add_argument("--no-sandbox")
@@ -93,32 +91,29 @@ def get_driver(headless=True):
     chrome_options.add_argument("--disable-ipc-flooding-protection")
     chrome_options.add_argument("--memory-pressure-off")
 
-    # Enable logging
-    chrome_options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
-
-    # Anti-detection and headers
-    chrome_options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-    )
+    # Additional stealth options
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option("useAutomationExtension", False)
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--profile-directory=Default")
+    chrome_options.add_argument("--disable-plugins-discovery")
+    chrome_options.add_argument("--start-maximized")
 
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()), options=chrome_options
+    # Use undetected-chromedriver
+    driver = uc.Chrome(
+        options=chrome_options,
+        headless=False,
+        use_subprocess=True,
+        version_main=143,
     )
 
-    # Execute CDP commands to modify headers
-    driver.execute_cdp_cmd(
-        "Network.setUserAgentOverride",
-        {
-            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-        },
-    )
-
-    # Evaluate script to hide webdriver property
+    # Additional stealth scripts
     driver.execute_script(
-        "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        """
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+        Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+        window.chrome = {runtime: {}};
+        """
     )
 
     return driver
@@ -444,7 +439,7 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
         driver.get(resort_url)
 
         # Wait for page to start loading (like a real browser)
-        time.sleep(random.uniform(1.5, 3.0))
+        time.sleep(random.uniform(2.5, 4.5))
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
@@ -461,7 +456,7 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
             return {date_str: "blocked" for date_str in date_list}
 
         # Wait for page to fully load (like a human waiting for content)
-        time.sleep(random.uniform(2.0, 4.0))
+        time.sleep(random.uniform(3.0, 5.0))
 
         # Simulate human behavior - browsing the page naturally
         simulate_human_behavior(driver)
@@ -556,8 +551,8 @@ def check_monitoring_jobs():
 
         logger.info(f"Checking {resort_name} for dates: {dates}")
 
-        # Random delay between resorts
-        time.sleep(random.uniform(3.0, 8.0))
+        # Longer random delay between resorts to appear more human
+        time.sleep(random.uniform(5.0, 12.0))
 
         start_time = time.time()
         # Navigate fresh but keep browser session alive
