@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # Session management - keep drivers alive per resort
 _resort_drivers = {}  # {resort_url: driver}
 _driver_use_count = {}  # Track how many times each driver has been used
-_MAX_DRIVER_USES = 3  # Recreate driver frequently to avoid detection patterns
+_MAX_DRIVER_USES = 10  # Keep driver alive longer with persistent profile
 _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
@@ -76,6 +76,9 @@ def get_driver(headless=True):
 
     chrome_options = uc.ChromeOptions()
 
+    # Use persistent Chrome profile to maintain cookies/session
+    chrome_options.add_argument("--user-data-dir=/app/chrome_profile")
+
     # Critical flags for Docker environment
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-setuid-sandbox")
@@ -93,8 +96,6 @@ def get_driver(headless=True):
 
     # Additional stealth options
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--profile-directory=Default")
     chrome_options.add_argument("--disable-plugins-discovery")
     chrome_options.add_argument("--start-maximized")
 
@@ -439,7 +440,12 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
         driver.get(resort_url)
 
         # Wait for page to start loading (like a real browser)
-        time.sleep(random.uniform(2.5, 4.5))
+        # Extra time on new session to pass challenge pages
+        if is_new_session:
+            logger.info("New session - waiting longer for any challenge pages")
+            time.sleep(random.uniform(5.0, 8.0))
+        else:
+            time.sleep(random.uniform(2.5, 4.5))
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
