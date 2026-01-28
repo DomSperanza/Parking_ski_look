@@ -20,7 +20,13 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-import undetected_chromedriver as uc
+
+try:
+    import undetected_chromedriver as uc
+
+    UC_AVAILABLE = True
+except ImportError:
+    UC_AVAILABLE = False
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -61,10 +67,13 @@ _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB V
 
 def get_driver(headless=True):
     """
-    Get a configured Chrome driver using undetected-chromedriver.
+    Get a configured Chrome driver with enhanced stealth.
+    Falls back to standard Selenium if undetected-chromedriver fails.
     """
     # Check Chrome version for debugging
     import subprocess
+    import os
+    from pathlib import Path
 
     try:
         result = subprocess.run(
@@ -74,50 +83,107 @@ def get_driver(headless=True):
     except Exception as e:
         logger.warning(f"Could not determine Chrome version: {e}")
 
-    chrome_options = uc.ChromeOptions()
+    # Determine profile directory based on environment
+    if os.path.exists("/app"):
+        # Docker environment
+        profile_dir = "/app/chrome_profile"
+    else:
+        # Local environment - use project directory
+        project_root = Path(__file__).parent.parent
+        profile_dir = str(project_root / "chrome_profile")
 
-    # Use persistent Chrome profile to maintain cookies/session
-    chrome_options.add_argument("--user-data-dir=/app/chrome_profile")
+    # Create profile directory if it doesn't exist
+    Path(profile_dir).mkdir(parents=True, exist_ok=True)
+    logger.info(f"Using Chrome profile directory: {profile_dir}")
+
+    chrome_options = Options()
 
     # Critical flags for Docker environment
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-setuid-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--display=:99")
+
+    # Only use display :99 if running in Docker/headless environment
+    if os.path.exists("/tmp/.X99-lock") or os.environ.get("DISPLAY") == ":99":
+        chrome_options.add_argument("--display=:99")
 
     # Memory-saving flags for low-RAM VPS
     chrome_options.add_argument("--disable-background-timer-throttling")
     chrome_options.add_argument("--disable-backgrounding-occluded-windows")
     chrome_options.add_argument("--disable-renderer-backgrounding")
-    chrome_options.add_argument("--disable-features=TranslateUI")
+    chrome_options.add_argument(
+        "--disable-features=TranslateUI,IsolateOrigins,site-per-process"
+    )
     chrome_options.add_argument("--disable-ipc-flooding-protection")
     chrome_options.add_argument("--memory-pressure-off")
 
-    # Additional stealth options
+    # Enhanced stealth options
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--disable-plugins-discovery")
     chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
 
-    # Use undetected-chromedriver
-    driver = uc.Chrome(
-        options=chrome_options,
-        headless=False,
-        use_subprocess=True,
-        version_main=143,
+    # Use persistent Chrome profile to maintain cookies/session
+    chrome_options.add_argument(f"--user-data-dir={profile_dir}")
+    chrome_options.add_argument("--profile-directory=Default")
+
+    # Disable profile picker and first run
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--no-default-browser-check")
+    chrome_options.add_argument("--disable-popup-blocking")
+    chrome_options.add_argument("--disable-infobars")
+
+    # Exclude automation switches
+    chrome_options.add_experimental_option(
+        "excludeSwitches", ["enable-automation", "enable-logging"]
     )
+    chrome_options.add_experimental_option("useAutomationExtension", False)
 
-    # Additional stealth scripts
-    driver.execute_script(
-        """
-        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-        Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-        window.chrome = {runtime: {}};
-        """
-    )
+    # Set realistic preferences
+    prefs = {
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.default_content_setting_values.notifications": 2,
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
 
-    return driver
+    try:
+        # Try standard Selenium with ChromeDriverManager
+        logger.info("Creating Chrome driver with standard Selenium")
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), options=chrome_options
+        )
+
+        # Enhanced stealth scripts
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {
+                "source": """
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+                Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
+                Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
+                window.chrome = {runtime: {}};
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({state: Notification.permission}) :
+                        originalQuery(parameters)
+                );
+            """
+            },
+        )
+
+        logger.info("Chrome driver created successfully")
+        return driver
+
+    except Exception as e:
+        logger.error(f"Failed to create Chrome driver: {e}")
+        raise
 
 
 def simulate_human_behavior(driver):

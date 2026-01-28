@@ -40,9 +40,9 @@ RUN pip install gunicorn
 # Copy application code
 COPY . .
 
-# Create directory for database, logs, and Chrome profile
-RUN mkdir -p data logs chrome_profile
-RUN chmod -R 777 chrome_profile
+# Create directory for database, logs, and Chrome profile with proper permissions
+RUN mkdir -p data logs chrome_profile && \
+    chmod -R 777 chrome_profile data logs
 
 # Expose port
 EXPOSE 5000
