@@ -65,15 +65,20 @@ _MAX_DRIVER_USES = 10  # Keep driver alive longer with persistent profile
 _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
-def get_driver(headless=True):
+def get_driver(headless=True, profile_name="default"):
     """
     Get a configured Chrome driver with enhanced stealth.
     Falls back to standard Selenium if undetected-chromedriver fails.
+
+    Args:
+        headless: Whether to run in headless mode (not currently used)
+        profile_name: Unique profile name to avoid lock conflicts
     """
     # Check Chrome version for debugging
     import subprocess
     import os
     from pathlib import Path
+    import hashlib
 
     try:
         result = subprocess.run(
@@ -83,14 +88,19 @@ def get_driver(headless=True):
     except Exception as e:
         logger.warning(f"Could not determine Chrome version: {e}")
 
-    # Determine profile directory based on environment
+    # Determine base profile directory based on environment
     if os.path.exists("/app"):
         # Docker environment
-        profile_dir = "/app/chrome_profile"
+        base_profile_dir = "/app/chrome_profile"
     else:
         # Local environment - use project directory
         project_root = Path(__file__).parent.parent
-        profile_dir = str(project_root / "chrome_profile")
+        base_profile_dir = str(project_root / "chrome_profile")
+
+    # Create unique profile directory per session to avoid locks
+    # Use hash of profile_name to keep it short
+    profile_hash = hashlib.md5(profile_name.encode()).hexdigest()[:8]
+    profile_dir = os.path.join(base_profile_dir, profile_hash)
 
     # Create profile directory if it doesn't exist
     Path(profile_dir).mkdir(parents=True, exist_ok=True)
@@ -475,9 +485,9 @@ def get_or_create_driver(resort_url):
         )
         cleanup_driver(oldest_url)
 
-    # Create new driver
+    # Create new driver with unique profile per resort to avoid locks
     logger.info(f"Creating new browser session for {resort_url}")
-    driver = get_driver(headless=False)
+    driver = get_driver(headless=False, profile_name=resort_url)
     _resort_drivers[resort_url] = driver
     _driver_use_count[resort_url] = 1
     return driver, True

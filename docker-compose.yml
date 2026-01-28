@@ -41,7 +41,7 @@ services:
       - BASE_URL=${BASE_URL}
     # Start Xvfb for non-headless Chrome, then run daemon
     # Clean up any stale Xvfb and Chrome lock files before starting
-    command: sh -c "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 /app/chrome_profile/SingletonLock /app/chrome_profile/SingletonSocket && chmod -R 777 /app/chrome_profile && Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && sleep 2 && python services/monitoring_daemon.py"
+    command: sh -c "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 && find /app/chrome_profile -name 'Singleton*' -delete && chmod -R 777 /app/chrome_profile && Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && sleep 2 && python services/monitoring_daemon.py"
     shm_size: "512m"
     deploy:
       resources:
