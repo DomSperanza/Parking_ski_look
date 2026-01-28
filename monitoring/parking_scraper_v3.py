@@ -84,7 +84,7 @@ def get_driver(headless=True):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--display=:99")
-    
+
     # Memory-saving flags for low-RAM VPS
     chrome_options.add_argument("--disable-background-timer-throttling")
     chrome_options.add_argument("--disable-backgrounding-occluded-windows")
@@ -98,7 +98,7 @@ def get_driver(headless=True):
 
     # Anti-detection and headers
     chrome_options.add_argument(
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
     )
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -112,7 +112,7 @@ def get_driver(headless=True):
     driver.execute_cdp_cmd(
         "Network.setUserAgentOverride",
         {
-            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+            "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
         },
     )
 
@@ -130,46 +130,55 @@ def simulate_human_behavior(driver):
     """
     try:
         from selenium.webdriver.common.action_chains import ActionChains
-        
+
         actions = ActionChains(driver)
-        
+
         # Initial pause - like a human reading the page
         time.sleep(random.uniform(2.0, 4.0))
-        
+
         # Smooth scrolling down (like reading the page)
         scroll_steps = random.randint(3, 6)
         for _ in range(scroll_steps):
             scroll_amount = random.randint(150, 400)
             # Smooth scroll using JavaScript
-            driver.execute_script(f"window.scrollBy({{top: {scroll_amount}, behavior: 'smooth'}});")
+            driver.execute_script(
+                f"window.scrollBy({{top: {scroll_amount}, behavior: 'smooth'}});"
+            )
             time.sleep(random.uniform(0.8, 2.0))  # Pause between scrolls like reading
-        
+
         # Sometimes scroll back up a bit (like re-reading something)
         if random.random() > 0.6:
             back_scroll = random.randint(100, 300)
-            driver.execute_script(f"window.scrollBy({{top: -{back_scroll}, behavior: 'smooth'}});")
+            driver.execute_script(
+                f"window.scrollBy({{top: -{back_scroll}, behavior: 'smooth'}});"
+            )
             time.sleep(random.uniform(1.0, 2.5))
-        
+
         # Random mouse movement simulation (hover over elements)
         try:
             # Try to find some interactive elements to hover over
             buttons = driver.find_elements(By.TAG_NAME, "button")
             links = driver.find_elements(By.TAG_NAME, "a")
             all_elements = buttons + links
-            
+
             if all_elements and random.random() > 0.4:
                 element = random.choice(all_elements[:10])  # Pick from first 10
                 try:
                     # Move to element smoothly
-                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+                    driver.execute_script(
+                        "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});",
+                        element,
+                    )
                     time.sleep(random.uniform(0.3, 0.8))
-                    actions.move_to_element(element).pause(random.uniform(0.2, 0.5)).perform()
+                    actions.move_to_element(element).pause(
+                        random.uniform(0.2, 0.5)
+                    ).perform()
                     time.sleep(random.uniform(0.5, 1.2))
                 except:
                     pass
         except:
             pass
-        
+
         # Sometimes move mouse to a random position (like moving cursor around)
         if random.random() > 0.7:
             try:
@@ -180,10 +189,10 @@ def simulate_human_behavior(driver):
                 time.sleep(random.uniform(0.3, 0.8))
             except:
                 pass
-        
+
         # Final pause before checking dates (like looking at calendar)
         time.sleep(random.uniform(1.5, 3.0))
-        
+
     except Exception as e:
         logger.debug(f"Error simulating human behavior: {e}")
 
@@ -245,7 +254,7 @@ def scan_html_for_dates(html_content, date_list, console_logs=None):
         "rate limit",
         "too many requests",
     ]
-    
+
     # CORS errors are normal browser behavior, not blocking
     cors_indicators = ["cors", "access-control-allow-origin"]
 
@@ -263,11 +272,12 @@ def scan_html_for_dates(html_content, date_list, console_logs=None):
         console_text = " ".join(console_logs).lower()
         # Filter out CORS errors (normal browser behavior)
         non_cors_logs = [
-            log for log in console_logs 
+            log
+            for log in console_logs
             if not any(cors_ind in log.lower() for cors_ind in cors_indicators)
         ]
         non_cors_text = " ".join(non_cors_logs).lower()
-        
+
         for indicator in blocking_indicators:
             if indicator.lower() in non_cors_text:
                 blocking_found = True
@@ -355,19 +365,21 @@ def get_or_create_driver(resort_url):
     Returns driver and whether it was newly created.
     """
     global _resort_drivers, _driver_use_count
-    
+
     # Check if we have an existing driver for this resort
     if resort_url in _resort_drivers:
         driver = _resort_drivers[resort_url]
         use_count = _driver_use_count.get(resort_url, 0)
-        
+
         # Check if driver is still alive
         try:
             # Try to get current URL to verify driver is responsive
             _ = driver.current_url
             # Check if we should recreate (prevent memory leaks)
             if use_count >= _MAX_DRIVER_USES:
-                logger.info(f"Driver for {resort_url} has been used {use_count} times, recreating...")
+                logger.info(
+                    f"Driver for {resort_url} has been used {use_count} times, recreating..."
+                )
                 try:
                     driver.quit()
                 except:
@@ -379,7 +391,9 @@ def get_or_create_driver(resort_url):
                 return driver, False
         except:
             # Driver is dead, remove it
-            logger.warning(f"Driver for {resort_url} is no longer responsive, recreating...")
+            logger.warning(
+                f"Driver for {resort_url} is no longer responsive, recreating..."
+            )
             try:
                 driver.quit()
             except:
@@ -387,14 +401,18 @@ def get_or_create_driver(resort_url):
             del _resort_drivers[resort_url]
             if resort_url in _driver_use_count:
                 del _driver_use_count[resort_url]
-    
+
     # Check if we're at the concurrent driver limit
     if len(_resort_drivers) >= _MAX_CONCURRENT_DRIVERS:
         # Close the least recently used driver (oldest by use count)
-        logger.warning(f"At max concurrent drivers ({_MAX_CONCURRENT_DRIVERS}), closing least used...")
-        oldest_url = min(_resort_drivers.keys(), key=lambda url: _driver_use_count.get(url, 0))
+        logger.warning(
+            f"At max concurrent drivers ({_MAX_CONCURRENT_DRIVERS}), closing least used..."
+        )
+        oldest_url = min(
+            _resort_drivers.keys(), key=lambda url: _driver_use_count.get(url, 0)
+        )
         cleanup_driver(oldest_url)
-    
+
     # Create new driver
     logger.info(f"Creating new browser session for {resort_url}")
     driver = get_driver(headless=False)
@@ -419,12 +437,12 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
     try:
         # Get or create driver for this resort
         driver, is_new_session = get_or_create_driver(resort_url)
-        
+
         # Always navigate fresh (refresh was causing redirects/blocking)
         # But keep browser session alive between navigations
         logger.info(f"Navigating to {resort_url}")
         driver.get(resort_url)
-        
+
         # Wait for page to start loading (like a real browser)
         time.sleep(random.uniform(1.5, 3.0))
 
@@ -444,10 +462,10 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
 
         # Wait for page to fully load (like a human waiting for content)
         time.sleep(random.uniform(2.0, 4.0))
-        
+
         # Simulate human behavior - browsing the page naturally
         simulate_human_behavior(driver)
-        
+
         # Additional pause - like looking at the calendar
         time.sleep(random.uniform(2.0, 4.0))
 
@@ -529,7 +547,7 @@ def check_monitoring_jobs():
 
     # Track if any resort was blocked
     was_blocked = False
-    
+
     # Process each resort
     for resort_url, data in resort_jobs.items():
         resort_name = data["resort_name"]
@@ -606,5 +624,5 @@ def check_monitoring_jobs():
                 logger.warning(
                     f"Could not check status: {resort_name} on {target_date}"
                 )
-    
+
     return was_blocked
