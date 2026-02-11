@@ -937,7 +937,6 @@ def check_monitoring_jobs():
         results = check_multiple_dates(resort_url, dates, refresh_only=False)
         duration = int((time.time() - start_time) * 1000)
 
-        # Check if blocked
         if any(r == "blocked" for r in results.values()):
             was_blocked = True
             # Clean up driver and profile for this resort when blocked to prevent fingerprint tracking
@@ -997,5 +996,12 @@ def check_monitoring_jobs():
                 logger.warning(
                     f"Could not check status: {resort_name} on {target_date}"
                 )
+
+        # Proactively clean up driver after each resort check to ensure fresh session next time
+        # This prevents "Connection refused" errors from stale drivers
+        logger.info(
+            f"Proactively cleaning up driver for {resort_name} to ensure fresh start next cycle"
+        )
+        cleanup_driver(resort_url, clear_profile=False)
 
     return was_blocked
