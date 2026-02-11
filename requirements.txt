@@ -2,8 +2,8 @@
 requests>=2.25.1
 beautifulsoup4>=4.9.3
 selenium>=4.1.0
-webdriver-manager>=3.5.2
-undetected-chromedriver>=3.5.0
+webdriver-manager==4.0.2
+undetected-chromedriver>=3.5.5
 playsound>=1.2.2
 python-dotenv>=0.19.2
 python-dateutil>=2.8.2

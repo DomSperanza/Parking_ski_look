@@ -8,6 +8,7 @@ Uses undetected-chromedriver to bypass anti-bot measures.
 
 import sys
 import os
+import subprocess
 from pathlib import Path
 import time
 import re
@@ -65,6 +66,30 @@ _MAX_DRIVER_USES = 3  # Reduced to prevent fingerprint tracking (was 10)
 _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
+def _get_chrome_version_main():
+    """
+    Get the major version number of the installed Chrome (e.g. 143).
+    Used so undetected-chromedriver uses a matching ChromeDriver.
+    Returns None if detection fails.
+    """
+    try:
+        result = subprocess.run(
+            ["google-chrome", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return None
+        # e.g. "Google Chrome 143.0.7499.146" or "Chromium 143.0.0.0"
+        match = re.search(r"(?:Chrome|Chromium)\s+(\d+)\.", result.stdout.strip())
+        if match:
+            return int(match.group(1))
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError) as e:
+        logger.debug(f"Could not get Chrome major version: {e}")
+    return None
+
+
 def _build_chrome_options(profile_dir, for_undetected_chromedriver=False):
     """
     Build Chrome options with all necessary flags and preferences.
@@ -92,18 +117,18 @@ def _build_chrome_options(profile_dir, for_undetected_chromedriver=False):
     chrome_options.add_argument("--disable-background-timer-throttling")
     chrome_options.add_argument("--disable-backgrounding-occluded-windows")
     chrome_options.add_argument("--disable-renderer-backgrounding")
-    chrome_options.add_argument(
-        "--disable-features=TranslateUI,IsolateOrigins,site-per-process"
-    )
-    chrome_options.add_argument("--disable-ipc-flooding-protection")
-    chrome_options.add_argument("--memory-pressure-off")
+    # chrome_options.add_argument(
+    #    "--disable-features=TranslateUI,IsolateOrigins,site-per-process"
+    # )
+    # chrome_options.add_argument("--disable-ipc-flooding-protection")
+    # chrome_options.add_argument("--memory-pressure-off")
 
     # Enhanced stealth options
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-plugins-discovery")
+    # chrome_options.add_argument("--disable-blink-features=AutomationControlled") # Handled by uc
+    # chrome_options.add_argument("--disable-plugins-discovery")
     chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-web-security")
-    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+    # chrome_options.add_argument("--disable-web-security") # HIGHLY DETECTABLE
+    # chrome_options.add_argument("--disable-features=VizDisplayCompositor")
 
     # Use persistent Chrome profile to maintain cookies/session
     chrome_options.add_argument(f"--user-data-dir={profile_dir}")
@@ -143,19 +168,14 @@ def get_driver(headless=True, profile_name="default"):
         headless: Whether to run in headless mode (not currently used)
         profile_name: Unique profile name to avoid lock conflicts
     """
-    # Check Chrome version for debugging
-    import subprocess
-    import os
-    from pathlib import Path
     import hashlib
+    import shutil
 
-    try:
-        result = subprocess.run(
-            ["google-chrome", "--version"], capture_output=True, text=True
-        )
-        logger.info(f"System Chrome version: {result.stdout.strip()}")
-    except Exception as e:
-        logger.warning(f"Could not determine Chrome version: {e}")
+    version_main = _get_chrome_version_main()
+    if version_main:
+        logger.info(f"System Chrome major version: {version_main}")
+    else:
+        logger.warning("Could not determine System Chrome version")
 
     # Determine base profile directory based on environment
     if os.path.exists("/app"):
@@ -179,55 +199,89 @@ def get_driver(headless=True, profile_name="default"):
         # Try undetected-chromedriver first if available
         if UC_AVAILABLE:
             logger.info("Creating Chrome driver with undetected-chromedriver")
-            try:
-                # Build options without incompatible experimental options for UC
+
+            # Helper to create driver with retries
+            def create_uc_driver():
                 uc_options = _build_chrome_options(
                     profile_dir, for_undetected_chromedriver=True
                 )
-                driver = uc.Chrome(
+                return uc.Chrome(
                     options=uc_options,
                     user_data_dir=profile_dir,
-                    version_main=None,  # Auto-detect Chrome version
+                    version_main=version_main,  # Match installed Chrome
                 )
+
+            try:
+                driver = create_uc_driver()
                 logger.info(
                     "Chrome driver created successfully with undetected-chromedriver"
                 )
                 return driver
             except Exception as uc_error:
                 logger.warning(
-                    f"undetected-chromedriver failed, falling back to standard Selenium: {uc_error}"
+                    f"undetected-chromedriver failed first attempt: {uc_error}"
                 )
+                # Try to clean up patcher data and retry
+                try:
+                    import undetected_chromedriver.patcher as patcher
+
+                    p = patcher.Patcher()
+                    if hasattr(p, "data_path"):
+                        logger.info(
+                            f"Cleaning up undetected_chromedriver data at {p.data_path}"
+                        )
+                        if os.path.exists(p.data_path):
+                            shutil.rmtree(p.data_path)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup patcher data: {e}")
+
+                logger.info("Retrying undetected-chromedriver after cleanup...")
+                try:
+                    driver = create_uc_driver()
+                    logger.info("Chrome driver created successfully (retry)")
+                    return driver
+                except Exception as retry_error:
+                    logger.warning(
+                        f"undetected-chromedriver failed retry: {retry_error}"
+                    )
+                    # Allow fallback to standard Selenium below
 
         # Fallback to standard Selenium with all options including experimental ones
         logger.info("Creating Chrome driver with standard Selenium")
         chrome_options = _build_chrome_options(
             profile_dir, for_undetected_chromedriver=False
         )
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), options=chrome_options
-        )
 
-        # Enhanced stealth scripts
-        driver.execute_cdp_cmd(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {
-                "source": """
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-                Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
-                Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8});
-                Object.defineProperty(navigator, 'deviceMemory', {get: () => 8});
-                window.chrome = {runtime: {}};
-                const originalQuery = window.navigator.permissions.query;
-                window.navigator.permissions.query = (parameters) => (
-                    parameters.name === 'notifications' ?
-                        Promise.resolve({state: Notification.permission}) :
-                        originalQuery(parameters)
-                );
-            """
-            },
-        )
+        # Explicitly requesting the version we detected
+        driver_path = None
+        try:
+            # Try new API (webdriver-manager 4.0+)
+            if version_main:
+                logger.info(
+                    f"Installing ChromeDriver version matching Chrome {version_main}..."
+                )
+                driver_path = ChromeDriverManager(
+                    driver_version=str(version_main)
+                ).install()
+            else:
+                logger.info(
+                    "Installing latest ChromeDriver (version detection failed)..."
+                )
+                driver_path = ChromeDriverManager().install()
+        except TypeError:
+            # Fallback to old API (webdriver-manager 3.x)
+            logger.info("Falling back to legacy ChromeDriverManager API")
+            if version_main:
+                driver_path = ChromeDriverManager(version=str(version_main)).install()
+            else:
+                driver_path = ChromeDriverManager().install()
+
+        driver = webdriver.Chrome(service=Service(driver_path), options=chrome_options)
+
+        # Custom stealth scripts removed to avoid conflicting with actual OS environment
+        # and triggering advanced bot detection (e.g. Cloudflare) that checks for
+        # OS/Browser mismatches (Linux container vs Win32 override).
+        # unrecognized-chromedriver handles the critical navigator.webdriver property natively.
 
         logger.info("Chrome driver created successfully")
         return driver
@@ -347,6 +401,120 @@ def get_console_logs(driver):
     except Exception as e:
         logger.debug(f"Could not retrieve console logs: {e}")
         return []
+
+
+def handle_cloudflare_challenge(driver):
+    """
+    Attempt to handle Cloudflare Turnstile challenge by clicking the checkbox.
+    """
+    try:
+        # Wait for iframe to be available
+        time.sleep(3)
+
+        # Get console logs to debug why iframe might be missing
+        try:
+            logs = driver.get_log("browser")
+            for log in logs:
+                logger.debug(f"Browser Log: {log}")
+        except:
+            pass
+
+        # Check for specific failure message
+        page_source = driver.page_source
+        if "Verification failed" in page_source:
+            logger.warning(
+                "Found 'Verification failed' message on page - Turnstile likely failed to load or was rejected immediately."
+            )
+
+        # Find all iframes
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        logger.info(f"Found {len(iframes)} iframes on page")
+
+        # Check for the widget specifically
+        try:
+            widget = driver.find_element(By.CLASS_NAME, "turnstile-widget")
+            logger.info(
+                f"Found turnstile-widget. Display: {widget.value_of_css_property('display')}"
+            )
+        except:
+            logger.info("Could not find .turnstile-widget element")
+
+        if len(iframes) == 0:
+            logger.info("No iframes found for challenge handling")
+
+        challenge_iframe = None
+        for iframe in iframes:
+            try:
+                src = iframe.get_attribute("src")
+                if src and ("cloudflare" in src or "turnstile" in src):
+                    challenge_iframe = iframe
+                    logger.info("Found Cloudflare/Turnstile iframe")
+                    break
+
+                # Also check by title or ID potentially
+                title = iframe.get_attribute("title")
+                if title and "challenge" in title.lower():
+                    challenge_iframe = iframe
+                    logger.info("Found iframe with challenge title")
+                    break
+            except:
+                continue
+
+        if challenge_iframe:
+            # Switch to iframe
+            driver.switch_to.frame(challenge_iframe)
+            logger.info("Switched to challenge iframe")
+            time.sleep(random.uniform(1.0, 2.0))
+
+            # Try to find the checkbox/button
+            # Turnstile usually has a checkbox in a shadow DOM or directly
+            try:
+                # Common selector for Turnstile checkbox
+                checkbox = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable(
+                        (By.CSS_SELECTOR, "input[type='checkbox'], .unbranded")
+                    )
+                )
+                if checkbox:
+                    logger.info("Found challenge checkbox, attempting to click...")
+                    time.sleep(random.uniform(0.5, 1.5))
+                    checkbox.click()
+                    logger.info("Clicked challenge checkbox")
+
+                    # Wait for resolution
+                    time.sleep(random.uniform(2.0, 4.0))
+            except Exception as e:
+                logger.warning(f"Could not find/click specific checkbox in iframe: {e}")
+
+            # Switch back to main content
+            driver.switch_to.default_content()
+
+            # Wait for reload/redirect
+            time.sleep(5)
+
+        else:
+            logger.info(
+                "No specific Cloudflare iframe found, checking for button in main frame"
+            )
+            # Sometimes it's not in an iframe or we missed it
+            # Look for "Verify you are human" button
+            try:
+                button = driver.find_element(
+                    By.XPATH,
+                    "//button[contains(text(), 'Verify') or contains(text(), 'Human')]",
+                )
+                if button:
+                    button.click()
+                    logger.info("Clicked potential verify button")
+            except:
+                pass
+
+    except Exception as e:
+        logger.error(f"Error handling Cloudflare challenge: {e}")
+        try:
+            driver.switch_to.default_content()
+        except:
+            pass
 
 
 def scan_html_for_dates(html_content, date_list, console_logs=None):
@@ -601,10 +769,10 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
             ]
             page_source = driver.page_source.lower()
             if any(indicator in page_source for indicator in challenge_indicators):
-                logger.info("Detected Cloudflare challenge, waiting additional time...")
-                time.sleep(random.uniform(8.0, 12.0))
-        except:
-            pass
+                logger.info("Detected Cloudflare challenge, attempting to handle...")
+                handle_cloudflare_challenge(driver)
+        except Exception as e:
+            logger.warning(f"Error checking/handling Cloudflare challenge: {e}")
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
