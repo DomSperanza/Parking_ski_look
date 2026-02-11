@@ -739,122 +739,157 @@ def get_or_create_driver(resort_url):
 
 def check_multiple_dates(resort_url, date_list, refresh_only=False):
     """
-    refresh_only parameter kept for compatibility but not used - always navigates fresh
-    to avoid refresh-triggered blocking
-    """
-    """
     Check availability for multiple dates by fetching the page source once and scanning it locally.
-    If refresh_only is True and a session exists, just refresh the page instead of navigating.
+    Includes robust retry logic to handle driver crashes (e.g. connection refused).
     """
-    driver = None
-    results = {}
-    is_new_session = False
+    max_retries = 2
 
-    try:
-        # Get or create driver for this resort
-        driver, is_new_session = get_or_create_driver(resort_url)
+    for attempt in range(max_retries):
+        driver = None
+        is_new_session = False
 
-        # Always navigate fresh (refresh was causing redirects/blocking)
-        # But keep browser session alive between navigations
-        logger.info(f"Navigating to {resort_url}")
-        driver.get(resort_url)
+        try:
+            # Get or create driver for this resort
+            driver, is_new_session = get_or_create_driver(resort_url)
 
-        # Wait for page to start loading (like a real browser)
-        # Extra time on new session to pass challenge pages - increased for Cloudflare
-        if is_new_session:
-            logger.info("New session - waiting longer for any challenge pages")
-            # Longer wait for Cloudflare Turnstile to complete
-            time.sleep(random.uniform(10.0, 15.0))
-        else:
+            # Always navigate fresh (refresh was causing redirects/blocking)
+            # But keep browser session alive between navigations
+            logger.info(
+                f"Navigating to {resort_url} (Attempt {attempt+1}/{max_retries})"
+            )
+            driver.get(resort_url)
+
+            # Wait for page to start loading (like a real browser)
+            # Extra time on new session to pass challenge pages - increased for Cloudflare
+            if is_new_session:
+                logger.info("New session - waiting longer for any challenge pages")
+                # Longer wait for Cloudflare Turnstile to complete
+                time.sleep(random.uniform(10.0, 15.0))
+            else:
+                time.sleep(random.uniform(3.0, 5.0))
+
+            # Check for Cloudflare challenge and wait if present
+            try:
+                # Look for common Cloudflare challenge indicators
+                challenge_indicators = [
+                    "challenges.cloudflare.com",
+                    "cf-browser-verification",
+                    "cf-challenge",
+                    "turnstile",
+                ]
+                page_source = driver.page_source.lower()
+                if any(indicator in page_source for indicator in challenge_indicators):
+                    logger.info(
+                        "Detected Cloudflare challenge, attempting to handle..."
+                    )
+                    handle_cloudflare_challenge(driver)
+            except Exception as e:
+                logger.warning(f"Error checking/handling Cloudflare challenge: {e}")
+
+            # Check if we were redirected to a blocking page
+            try:
+                current_url = driver.current_url
+                page_title = driver.title.lower()
+
+                if current_url != resort_url:
+                    logger.warning(f"Redirected from {resort_url} to {current_url}")
+
+                if any(
+                    indicator in page_title
+                    for indicator in [
+                        "blocked",
+                        "access denied",
+                        "challenge",
+                        "captcha",
+                    ]
+                ):
+                    logger.error(
+                        f"BLOCKED: Page title indicates blocking: {page_title}"
+                    )
+                    return {date_str: "blocked" for date_str in date_list}
+            except Exception as e:
+                # If we can't even get URL/Title, something is wrong with driver
+                raise WebDriverException(f"Failed to check URL/Title: {e}")
+
+            # Wait for page to fully load (like a human waiting for content)
             time.sleep(random.uniform(3.0, 5.0))
 
-        # Check for Cloudflare challenge and wait if present
-        try:
-            # Look for common Cloudflare challenge indicators
-            challenge_indicators = [
-                "challenges.cloudflare.com",
-                "cf-browser-verification",
-                "cf-challenge",
-                "turnstile",
-            ]
-            page_source = driver.page_source.lower()
-            if any(indicator in page_source for indicator in challenge_indicators):
-                logger.info("Detected Cloudflare challenge, attempting to handle...")
-                handle_cloudflare_challenge(driver)
-        except Exception as e:
-            logger.warning(f"Error checking/handling Cloudflare challenge: {e}")
+            # Simulate human behavior - browsing the page naturally
+            simulate_human_behavior(driver)
 
-        # Check if we were redirected to a blocking page
-        current_url = driver.current_url
-        page_title = driver.title.lower()
+            # Additional pause - like looking at the calendar
+            time.sleep(random.uniform(2.0, 4.0))
 
-        if current_url != resort_url:
-            logger.warning(f"Redirected from {resort_url} to {current_url}")
-
-        if any(
-            indicator in page_title
-            for indicator in ["blocked", "access denied", "challenge", "captcha"]
-        ):
-            logger.error(f"BLOCKED: Page title indicates blocking: {page_title}")
-            return {date_str: "blocked" for date_str in date_list}
-
-        # Wait for page to fully load (like a human waiting for content)
-        time.sleep(random.uniform(3.0, 5.0))
-
-        # Simulate human behavior - browsing the page naturally
-        simulate_human_behavior(driver)
-
-        # Additional pause - like looking at the calendar
-        time.sleep(random.uniform(2.0, 4.0))
-
-        # Attempt to wait for the first date to appear, just to ensure we don't snapshot blank page
-        # But don't fail if it doesn't appear (could be scrolling issue), just proceed to snapshot
-        try:
-            first_date = date_list[0]
-            if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
-                aria_label = convert_to_aria_label(first_date)
-            else:
-                aria_label = first_date
-
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, f"[aria-label='{aria_label}']")
-                )
-            )
-        except Exception as e:
-            logger.info(
-                f"Wait for first date element timed out or failed, proceeding to snapshot anyway: {e}"
-            )
-
-        # Get console logs before closing
-        console_logs = get_console_logs(driver)
-
-        # Export raw HTML
-        html_content = driver.page_source
-
-        # Scan the local HTML file with console logs
-        results = scan_html_for_dates(
-            html_content, date_list, console_logs=console_logs
-        )
-
-        return results
-
-    except WebDriverException as e:
-        logger.error(f"WebDriver error: {e}")
-        # If driver error, remove it from cache so we recreate next time
-        if resort_url in _resort_drivers:
+            # Attempt to wait for the first date to appear, just to ensure we don't snapshot blank page
+            # But don't fail if it doesn't appear (could be scrolling issue), just proceed to snapshot
             try:
-                _resort_drivers[resort_url].quit()
-            except:
-                pass
-            del _resort_drivers[resort_url]
-            if resort_url in _driver_use_count:
-                del _driver_use_count[resort_url]
-        return {date_str: "blank" for date_str in date_list}
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return {date_str: "blank" for date_str in date_list}
-    # Don't close driver in finally - keep it alive for next check
+                first_date = date_list[0]
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", first_date):
+                    aria_label = convert_to_aria_label(first_date)
+                else:
+                    aria_label = first_date
+
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.CSS_SELECTOR, f"[aria-label='{aria_label}']")
+                    )
+                )
+            except Exception as e:
+                logger.info(
+                    f"Wait for first date element timed out or failed, proceeding to snapshot anyway: {e}"
+                )
+
+            # Get console logs before closing
+            console_logs = get_console_logs(driver)
+
+            # Export raw HTML
+            html_content = driver.page_source
+
+            # Scan the local HTML file with console logs
+            results = scan_html_for_dates(
+                html_content, date_list, console_logs=console_logs
+            )
+
+            return results
+
+        except (WebDriverException, Exception) as e:
+            # Check if this is a connection/driver error that warrants a retry
+            error_str = str(e).lower()
+            is_connection_error = any(
+                x in error_str
+                for x in [
+                    "connection refused",
+                    "connection reset",
+                    "closed",
+                    "not reachable",
+                    "session",
+                    "disconnected",
+                    "max retries exceeded",
+                    "broken pipe",
+                ]
+            )
+
+            if is_connection_error or isinstance(e, WebDriverException):
+                logger.warning(f"Driver/Connection error on attempt {attempt+1}: {e}")
+
+                # CRITICAL: Clean up the broken driver so next attempt gets a fresh one
+                cleanup_driver(resort_url, clear_profile=False)
+
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying check for {resort_url} in 5 seconds...")
+                    time.sleep(5)
+                    continue
+                else:
+                    logger.error(f"Max retries reached for {resort_url}. Giving up.")
+            else:
+                # For non-driver errors (e.g. logic bugs), logging and returning is safer than retrying loops
+                logger.error(
+                    f"Unexpected error checking {resort_url}: {e}", exc_info=True
+                )
+
+            return {date_str: "blank" for date_str in date_list}
+
+    return {date_str: "blank" for date_str in date_list}
 
 
 def check_monitoring_jobs():
