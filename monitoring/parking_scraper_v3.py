@@ -65,6 +65,75 @@ _MAX_DRIVER_USES = 3  # Reduced to prevent fingerprint tracking (was 10)
 _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
+def _build_chrome_options(profile_dir, for_undetected_chromedriver=False):
+    """
+    Build Chrome options with all necessary flags and preferences.
+
+    Args:
+        profile_dir: Path to Chrome profile directory
+        for_undetected_chromedriver: If True, exclude experimental options that UC doesn't support
+
+    Returns:
+        Configured Chrome Options object
+    """
+    chrome_options = Options()
+
+    # Critical flags for Docker environment
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-setuid-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--window-size=1920,1080")
+
+    # Only use display :99 if running in Docker/headless environment
+    if os.path.exists("/tmp/.X99-lock") or os.environ.get("DISPLAY") == ":99":
+        chrome_options.add_argument("--display=:99")
+
+    # Memory-saving flags for low-RAM VPS
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument(
+        "--disable-features=TranslateUI,IsolateOrigins,site-per-process"
+    )
+    chrome_options.add_argument("--disable-ipc-flooding-protection")
+    chrome_options.add_argument("--memory-pressure-off")
+
+    # Enhanced stealth options
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--disable-plugins-discovery")
+    chrome_options.add_argument("--start-maximized")
+    chrome_options.add_argument("--disable-web-security")
+    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+
+    # Use persistent Chrome profile to maintain cookies/session
+    chrome_options.add_argument(f"--user-data-dir={profile_dir}")
+    chrome_options.add_argument("--profile-directory=Default")
+
+    # Disable profile picker and first run
+    chrome_options.add_argument("--no-first-run")
+    chrome_options.add_argument("--no-default-browser-check")
+    chrome_options.add_argument("--disable-popup-blocking")
+    chrome_options.add_argument("--disable-infobars")
+
+    # Exclude automation switches - only for standard Selenium
+    # undetected-chromedriver handles these internally
+    if not for_undetected_chromedriver:
+        chrome_options.add_experimental_option(
+            "excludeSwitches", ["enable-automation", "enable-logging"]
+        )
+        chrome_options.add_experimental_option("useAutomationExtension", False)
+
+    # Set realistic preferences
+    prefs = {
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.default_content_setting_values.notifications": 2,
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
+
+    return chrome_options
+
+
 def get_driver(headless=True, profile_name="default"):
     """
     Get a configured Chrome driver with enhanced stealth.
@@ -106,66 +175,17 @@ def get_driver(headless=True, profile_name="default"):
     Path(profile_dir).mkdir(parents=True, exist_ok=True)
     logger.info(f"Using Chrome profile directory: {profile_dir}")
 
-    chrome_options = Options()
-
-    # Critical flags for Docker environment
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-setuid-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
-
-    # Only use display :99 if running in Docker/headless environment
-    if os.path.exists("/tmp/.X99-lock") or os.environ.get("DISPLAY") == ":99":
-        chrome_options.add_argument("--display=:99")
-
-    # Memory-saving flags for low-RAM VPS
-    chrome_options.add_argument("--disable-background-timer-throttling")
-    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-    chrome_options.add_argument("--disable-renderer-backgrounding")
-    chrome_options.add_argument(
-        "--disable-features=TranslateUI,IsolateOrigins,site-per-process"
-    )
-    chrome_options.add_argument("--disable-ipc-flooding-protection")
-    chrome_options.add_argument("--memory-pressure-off")
-
-    # Enhanced stealth options
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-plugins-discovery")
-    chrome_options.add_argument("--start-maximized")
-    chrome_options.add_argument("--disable-web-security")
-    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-
-    # Use persistent Chrome profile to maintain cookies/session
-    chrome_options.add_argument(f"--user-data-dir={profile_dir}")
-    chrome_options.add_argument("--profile-directory=Default")
-
-    # Disable profile picker and first run
-    chrome_options.add_argument("--no-first-run")
-    chrome_options.add_argument("--no-default-browser-check")
-    chrome_options.add_argument("--disable-popup-blocking")
-    chrome_options.add_argument("--disable-infobars")
-
-    # Exclude automation switches
-    chrome_options.add_experimental_option(
-        "excludeSwitches", ["enable-automation", "enable-logging"]
-    )
-    chrome_options.add_experimental_option("useAutomationExtension", False)
-
-    # Set realistic preferences
-    prefs = {
-        "credentials_enable_service": False,
-        "profile.password_manager_enabled": False,
-        "profile.default_content_setting_values.notifications": 2,
-    }
-    chrome_options.add_experimental_option("prefs", prefs)
-
     try:
         # Try undetected-chromedriver first if available
         if UC_AVAILABLE:
             logger.info("Creating Chrome driver with undetected-chromedriver")
             try:
+                # Build options without incompatible experimental options for UC
+                uc_options = _build_chrome_options(
+                    profile_dir, for_undetected_chromedriver=True
+                )
                 driver = uc.Chrome(
-                    options=chrome_options,
+                    options=uc_options,
                     user_data_dir=profile_dir,
                     version_main=None,  # Auto-detect Chrome version
                 )
@@ -178,8 +198,11 @@ def get_driver(headless=True, profile_name="default"):
                     f"undetected-chromedriver failed, falling back to standard Selenium: {uc_error}"
                 )
 
-        # Fallback to standard Selenium
+        # Fallback to standard Selenium with all options including experimental ones
         logger.info("Creating Chrome driver with standard Selenium")
+        chrome_options = _build_chrome_options(
+            profile_dir, for_undetected_chromedriver=False
+        )
         driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()), options=chrome_options
         )
