@@ -637,15 +637,25 @@ def cleanup_driver(resort_url, clear_profile=False):
 
         import hashlib
 
-        profile_hash = hashlib.md5(resort_url.encode()).hexdigest()[:8]
-        profile_dir = os.path.join(base_profile_dir, profile_hash)
-
         if os.path.exists(profile_dir):
             try:
-                shutil.rmtree(profile_dir)
-                logger.info(
-                    f"Cleared profile directory for {resort_url} to prevent fingerprint tracking"
-                )
+                # Try to remove with retries
+                for i in range(3):
+                    try:
+                        shutil.rmtree(profile_dir, ignore_errors=False)
+                        logger.info(
+                            f"Cleared profile directory for {resort_url} to prevent fingerprint tracking"
+                        )
+                        break
+                    except OSError:
+                        if i == 2:
+                            # Final attempt with ignore_errors
+                            shutil.rmtree(profile_dir, ignore_errors=True)
+                            logger.warning(
+                                f"Force removed profile directory for {resort_url} (some files might remain)"
+                            )
+                        else:
+                            time.sleep(1)
             except Exception as e:
                 logger.warning(f"Could not clear profile directory: {e}")
 
