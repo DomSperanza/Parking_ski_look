@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 # Session management - keep drivers alive per resort
 _resort_drivers = {}  # {resort_url: driver}
 _driver_use_count = {}  # Track how many times each driver has been used
-_MAX_DRIVER_USES = 10  # Keep driver alive longer with persistent profile
+_MAX_DRIVER_USES = 3  # Reduced to prevent fingerprint tracking (was 10)
 _MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
@@ -160,7 +160,25 @@ def get_driver(headless=True, profile_name="default"):
     chrome_options.add_experimental_option("prefs", prefs)
 
     try:
-        # Try standard Selenium with ChromeDriverManager
+        # Try undetected-chromedriver first if available
+        if UC_AVAILABLE:
+            logger.info("Creating Chrome driver with undetected-chromedriver")
+            try:
+                driver = uc.Chrome(
+                    options=chrome_options,
+                    user_data_dir=profile_dir,
+                    version_main=None,  # Auto-detect Chrome version
+                )
+                logger.info(
+                    "Chrome driver created successfully with undetected-chromedriver"
+                )
+                return driver
+            except Exception as uc_error:
+                logger.warning(
+                    f"undetected-chromedriver failed, falling back to standard Selenium: {uc_error}"
+                )
+
+        # Fallback to standard Selenium
         logger.info("Creating Chrome driver with standard Selenium")
         driver = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()), options=chrome_options
@@ -400,9 +418,10 @@ def check_date_availability(resort_url, date_str):
     return check_multiple_dates(resort_url, [date_str])[date_str]
 
 
-def cleanup_driver(resort_url):
+def cleanup_driver(resort_url, clear_profile=False):
     """
     Clean up driver for a specific resort (e.g., when blocked).
+    If clear_profile is True, also remove the profile directory to start fresh.
     """
     global _resort_drivers, _driver_use_count
     if resort_url in _resort_drivers:
@@ -414,6 +433,30 @@ def cleanup_driver(resort_url):
         if resort_url in _driver_use_count:
             del _driver_use_count[resort_url]
         logger.info(f"Cleaned up driver for {resort_url}")
+
+    # Clear profile directory if blocked to prevent fingerprint tracking
+    if clear_profile:
+        import shutil
+
+        if os.path.exists("/app"):
+            base_profile_dir = "/app/chrome_profile"
+        else:
+            project_root = Path(__file__).parent.parent
+            base_profile_dir = str(project_root / "chrome_profile")
+
+        import hashlib
+
+        profile_hash = hashlib.md5(resort_url.encode()).hexdigest()[:8]
+        profile_dir = os.path.join(base_profile_dir, profile_hash)
+
+        if os.path.exists(profile_dir):
+            try:
+                shutil.rmtree(profile_dir)
+                logger.info(
+                    f"Cleared profile directory for {resort_url} to prevent fingerprint tracking"
+                )
+            except Exception as e:
+                logger.warning(f"Could not clear profile directory: {e}")
 
 
 def cleanup_all_drivers():
@@ -516,12 +559,29 @@ def check_multiple_dates(resort_url, date_list, refresh_only=False):
         driver.get(resort_url)
 
         # Wait for page to start loading (like a real browser)
-        # Extra time on new session to pass challenge pages
+        # Extra time on new session to pass challenge pages - increased for Cloudflare
         if is_new_session:
             logger.info("New session - waiting longer for any challenge pages")
-            time.sleep(random.uniform(5.0, 8.0))
+            # Longer wait for Cloudflare Turnstile to complete
+            time.sleep(random.uniform(10.0, 15.0))
         else:
-            time.sleep(random.uniform(2.5, 4.5))
+            time.sleep(random.uniform(3.0, 5.0))
+
+        # Check for Cloudflare challenge and wait if present
+        try:
+            # Look for common Cloudflare challenge indicators
+            challenge_indicators = [
+                "challenges.cloudflare.com",
+                "cf-browser-verification",
+                "cf-challenge",
+                "turnstile",
+            ]
+            page_source = driver.page_source.lower()
+            if any(indicator in page_source for indicator in challenge_indicators):
+                logger.info("Detected Cloudflare challenge, waiting additional time...")
+                time.sleep(random.uniform(8.0, 12.0))
+        except:
+            pass
 
         # Check if we were redirected to a blocking page
         current_url = driver.current_url
@@ -644,8 +704,8 @@ def check_monitoring_jobs():
         # Check if blocked
         if any(r == "blocked" for r in results.values()):
             was_blocked = True
-            # Clean up driver for this resort when blocked
-            cleanup_driver(resort_url)
+            # Clean up driver and profile for this resort when blocked to prevent fingerprint tracking
+            cleanup_driver(resort_url, clear_profile=True)
 
         # Log check result
         status = (
