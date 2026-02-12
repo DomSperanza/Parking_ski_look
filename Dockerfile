@@ -1,5 +1,5 @@
-# Use Python 3.9 slim image
-FROM python:3.9-slim
+# Use Python 3.12 slim image
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -14,21 +14,32 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     unzip \
     xvfb \
+    libnss3 \
+    libgconf-2-4 \
+    libfontconfig1 \
+    libasound2 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libnspr4 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libxkbcommon0 \
+    libpango-1.0-0 \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
-# Use wget to download key, verify it exists, then process
-ARG CACHEBUST=1
-RUN mkdir -p /usr/share/keyrings \
-    && (wget -q --timeout=10 --tries=3 -O /tmp/chrome-key.pub https://dl-ssl.google.com/linux/linux_signing_key.pub \
-        || wget -q --timeout=10 --tries=3 -O /tmp/chrome-key.pub https://dl.google.com/linux/linux_signing_key.pub) \
-    && test -s /tmp/chrome-key.pub \
-    && gpg --dearmor < /tmp/chrome-key.pub > /usr/share/keyrings/google-chrome.gpg \
-    && rm -f /tmp/chrome-key.pub \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
+# Install Chrome for Testing (v144) to ensure compatibility
+RUN wget -q https://storage.googleapis.com/chrome-for-testing-public/144.0.7559.133/linux64/chrome-linux64.zip \
+    && unzip chrome-linux64.zip \
+    && mv chrome-linux64 /opt/chrome-for-testing \
+    && ln -s /opt/chrome-for-testing/chrome /usr/bin/google-chrome \
+    && rm chrome-linux64.zip
 
 # Set working directory
 WORKDIR /app
