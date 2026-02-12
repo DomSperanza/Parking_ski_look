@@ -25,7 +25,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 try:
     import undetected_chromedriver as uc
 
-    UC_AVAILABLE = True
+    # Force disable UC for stability - user requested standard Selenium default
+    UC_AVAILABLE = False
 except ImportError:
     UC_AVAILABLE = False
 
