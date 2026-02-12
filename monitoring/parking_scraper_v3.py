@@ -179,6 +179,15 @@ def get_driver(headless=True, profile_name="default"):
     else:
         logger.warning("Could not determine System Chrome version")
 
+    # Force kill any zombie chrome processes to free resources
+    # ONLY run this inside Docker to avoid killing user's personal browser
+    if os.path.exists("/app"):
+        try:
+            subprocess.run(["pkill", "-f", "chrome"], capture_output=True)
+            subprocess.run(["pkill", "-f", "chromedriver"], capture_output=True)
+        except:
+            pass
+
     # Determine base profile directory based on environment
     if os.path.exists("/app"):
         # Docker environment
@@ -713,6 +722,11 @@ def get_or_create_driver(resort_url):
             _resort_drivers.keys(), key=lambda url: _driver_use_count.get(url, 0)
         )
         cleanup_driver(oldest_url)
+
+    # ALWAYS force a fresh driver for stability
+    # This might comprise performance slightly but ensures no cross-contamination or dead sessions
+    if resort_url in _resort_drivers:
+        cleanup_driver(resort_url, clear_profile=True)
 
     # Create new driver with unique profile per resort to avoid locks
     logger.info(f"Creating new browser session for {resort_url}")
