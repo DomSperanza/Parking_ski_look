@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y \
     unzip \
     xvfb \
     libnss3 \
-    libgconf-2-4 \
     libfontconfig1 \
     libasound2 \
     libatk1.0-0 \
