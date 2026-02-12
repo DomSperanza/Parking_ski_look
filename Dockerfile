@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install Chrome
 # Use wget to download key, verify it exists, then process
+ARG CACHEBUST=1
 RUN mkdir -p /usr/share/keyrings \
     && (wget -q --timeout=10 --tries=3 -O /tmp/chrome-key.pub https://dl-ssl.google.com/linux/linux_signing_key.pub \
         || wget -q --timeout=10 --tries=3 -O /tmp/chrome-key.pub https://dl.google.com/linux/linux_signing_key.pub) \

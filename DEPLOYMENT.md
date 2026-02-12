@@ -151,6 +151,12 @@ docker-compose up -d --build
   git pull
   docker-compose up -d --build
   ```
+- **Force Chrome Update:**
+  ```bash
+  # Rebuild with current timestamp to bust cache and fetch latest Chrome
+  docker-compose build --build-arg CACHEBUST=$(date +%s) daemon
+  docker-compose up -d daemon
+  ```
 
 ### 5. Data Persistence
 - Database is stored in `./data/parking_monitor.db` (mapped to host)
