@@ -637,6 +637,9 @@ def cleanup_driver(resort_url, clear_profile=False):
 
         import hashlib
 
+        profile_hash = hashlib.md5(resort_url.encode()).hexdigest()[:8]
+        profile_dir = os.path.join(base_profile_dir, profile_hash)
+
         if os.path.exists(profile_dir):
             try:
                 # Try to remove with retries
