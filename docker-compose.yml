@@ -42,13 +42,13 @@ services:
     # Start Xvfb for non-headless Chrome, then run daemon
     # Clean up any stale Xvfb and Chrome lock files before starting
     command: sh -c "rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 && find /app/chrome_profile -name 'Singleton*' -delete && chmod -R 777 /app/chrome_profile && Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset & export DISPLAY=:99 && sleep 2 && python services/monitoring_daemon.py"
-    shm_size: "512m"
+    shm_size: "1gb"
     deploy:
       resources:
         limits:
-          memory: 1.5G
+          memory: 2.5G
         reservations:
-          memory: 512M
+          memory: 1G
 
   nginx:
     image: nginx:1.21-alpine
