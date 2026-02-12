@@ -676,63 +676,39 @@ def get_or_create_driver(resort_url):
     """
     global _resort_drivers, _driver_use_count
 
-    # Check if we have an existing driver for this resort
-    if resort_url in _resort_drivers:
-        driver = _resort_drivers[resort_url]
-        use_count = _driver_use_count.get(resort_url, 0)
+    # SINGLE PERSISTENT DRIVER IMPLEMENTATION
+    # Use a fixed key for the shared driver
+    SHARED_KEY = "shared_driver"
+
+    # Check if we have an existing shared driver
+    if SHARED_KEY in _resort_drivers:
+        driver = _resort_drivers[SHARED_KEY]
 
         # Check if driver is still alive
         try:
             # Try to get current URL to verify driver is responsive
             _ = driver.current_url
-            # Check if we should recreate (prevent memory leaks)
-            if use_count >= _MAX_DRIVER_USES:
-                logger.info(
-                    f"Driver for {resort_url} has been used {use_count} times, recreating..."
-                )
-                try:
-                    driver.quit()
-                except:
-                    pass
-                del _resort_drivers[resort_url]
-                del _driver_use_count[resort_url]
-            else:
-                _driver_use_count[resort_url] = use_count + 1
-                return driver, False
+            # We don't limit uses anymore, we want it to persist as long as possible
+            return driver, False
         except:
             # Driver is dead, remove it
-            logger.warning(
-                f"Driver for {resort_url} is no longer responsive, recreating..."
-            )
+            logger.warning("Shared driver is no longer responsive, recreating...")
             try:
                 driver.quit()
             except:
                 pass
-            del _resort_drivers[resort_url]
-            if resort_url in _driver_use_count:
-                del _driver_use_count[resort_url]
+            del _resort_drivers[SHARED_KEY]
 
-    # Check if we're at the concurrent driver limit
-    if len(_resort_drivers) >= _MAX_CONCURRENT_DRIVERS:
-        # Close the least recently used driver (oldest by use count)
-        logger.warning(
-            f"At max concurrent drivers ({_MAX_CONCURRENT_DRIVERS}), closing least used..."
-        )
-        oldest_url = min(
-            _resort_drivers.keys(), key=lambda url: _driver_use_count.get(url, 0)
-        )
-        cleanup_driver(oldest_url)
+    # If we get here, we need to create a new driver
+    logger.info(
+        f"Creating NEW shared browser session (will be reused for {resort_url})"
+    )
 
-    # ALWAYS force a fresh driver for stability
-    # This might comprise performance slightly but ensures no cross-contamination or dead sessions
-    if resort_url in _resort_drivers:
-        cleanup_driver(resort_url, clear_profile=True)
+    # Clear any existing profiles to ensure clean start
+    # cleanup_driver(SHARED_KEY, clear_profile=False)
 
-    # Create new driver with unique profile per resort to avoid locks
-    logger.info(f"Creating new browser session for {resort_url}")
-    driver = get_driver(headless=False, profile_name=resort_url)
-    _resort_drivers[resort_url] = driver
-    _driver_use_count[resort_url] = 1
+    driver = get_driver(headless=False, profile_name="shared_monitor")
+    _resort_drivers[SHARED_KEY] = driver
     return driver, True
 
 
