@@ -606,6 +606,15 @@ def cleanup_driver(resort_url, clear_profile=False):
     If clear_profile is True, also remove the profile directory to start fresh.
     """
     global _resort_drivers, _driver_use_count
+
+    # Check if we are using a shared driver
+    SHARED_KEY = "shared_driver"
+    if SHARED_KEY in _resort_drivers and resort_url != SHARED_KEY:
+        # If we are using a shared driver, don't quit it when cleaning up a specific resort
+        # The shared driver checks its own health in get_or_create_driver
+        logger.debug(f"Skipping driver cleanup for {resort_url} (using shared driver)")
+        return
+
     if resort_url in _resort_drivers:
         try:
             _resort_drivers[resort_url].quit()
