@@ -222,30 +222,10 @@ def get_driver(headless=True, profile_name="default"):
                 logger.warning(
                     f"undetected-chromedriver failed first attempt: {uc_error}"
                 )
-                # Try to clean up patcher data and retry
-                try:
-                    import undetected_chromedriver.patcher as patcher
-
-                    p = patcher.Patcher()
-                    if hasattr(p, "data_path"):
-                        logger.info(
-                            f"Cleaning up undetected_chromedriver data at {p.data_path}"
-                        )
-                        if os.path.exists(p.data_path):
-                            shutil.rmtree(p.data_path)
-                except Exception as e:
-                    logger.warning(f"Failed to cleanup patcher data: {e}")
-
-                logger.info("Retrying undetected-chromedriver after cleanup...")
-                try:
-                    driver = create_uc_driver()
-                    logger.info("Chrome driver created successfully (retry)")
-                    return driver
-                except Exception as retry_error:
-                    logger.warning(
-                        f"undetected-chromedriver failed retry: {retry_error}"
-                    )
-                    # Allow fallback to standard Selenium below
+                logger.info(
+                    "Falling back to standard Selenium directly to avoid crash loops..."
+                )
+                # Fallback to standard Selenium below
 
         # Fallback to standard Selenium with all options including experimental ones
         logger.info("Creating Chrome driver with standard Selenium")
