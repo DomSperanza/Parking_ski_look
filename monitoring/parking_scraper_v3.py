@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 _resort_drivers = {}  # {resort_url: driver}
 _driver_use_count = {}  # Track how many times each driver has been used
 _MAX_DRIVER_USES = 3  # Reduced to prevent fingerprint tracking (was 10)
-_MAX_CONCURRENT_DRIVERS = 2  # Limit concurrent browsers to save memory (1.9GB VPS)
+_MAX_CONCURRENT_DRIVERS = 1  # Limit concurrent browsers to save memory (1.9GB VPS)
 
 
 def _get_chrome_version_main():
@@ -153,6 +153,7 @@ def _build_chrome_options(profile_dir, for_undetected_chromedriver=False):
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False,
         "profile.default_content_setting_values.notifications": 2,
+        "profile.managed_default_content_settings.images": 2,  # Disable images to save memory
     }
     chrome_options.add_experimental_option("prefs", prefs)
 
