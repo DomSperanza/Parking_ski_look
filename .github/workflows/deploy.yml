@@ -32,4 +32,5 @@ jobs:
             if [ -n "$(docker ps -q --filter "publish=443")" ]; then docker rm -f $(docker ps -q --filter "publish=443"); fi
             
             # Rebuild and restart ALL containers (including nginx and certbot)
-            docker-compose up -d --build
+            # Using 'docker compose' (v2) instead of 'docker-compose' (v1) to avoid ContainerConfig bug
+            docker compose up -d --build
