@@ -25,6 +25,7 @@ services:
     build: .
     container_name: parking_daemon
     restart: always
+    network_mode: service:vpn
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -49,6 +50,26 @@ services:
           memory: 2.5G
         reservations:
           memory: 1G
+    depends_on:
+      vpn:
+        condition: service_healthy
+
+  vpn:
+    image: qmcgaw/gluetun
+    container_name: vpn
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - ./gluetun:/gluetun
+    environment:
+      - VPN_SERVICE_PROVIDER=mullvad
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - DNS_ADDRESS=10.64.0.1
+    restart: always
 
   nginx:
     image: nginx:1.21-alpine
