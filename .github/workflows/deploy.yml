@@ -23,14 +23,15 @@ jobs:
             # Pull the latest changes
             git pull
             
-            # Stop and remove old containers to avoid name conflicts
-            docker rm -f parking_daemon parking_webapp || true
+            # Tear down all containers cleanly (handles stale/garbled names from old docker-compose v1)
+            docker compose down --remove-orphans || true
+            
+            # Also force-remove any leftover containers by name
+            docker rm -f parking_daemon parking_webapp vpn || true
             
             # Stop any container using port 80 or 443 (likely old nginx)
-            # This prevents port conflicts when starting the new nginx
             if [ -n "$(docker ps -q --filter "publish=80")" ]; then docker rm -f $(docker ps -q --filter "publish=80"); fi
             if [ -n "$(docker ps -q --filter "publish=443")" ]; then docker rm -f $(docker ps -q --filter "publish=443"); fi
             
-            # Rebuild and restart ALL containers (including nginx and certbot)
-            # Using 'docker compose' (v2) instead of 'docker-compose' (v1) to avoid ContainerConfig bug
+            # Rebuild and restart ALL containers
             docker compose up -d --build
