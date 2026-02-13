@@ -21,6 +21,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from config.database import get_active_monitoring_jobs, delete_expired_jobs
 from monitoring.parking_scraper_v3 import check_monitoring_jobs, cleanup_all_drivers
+from monitoring.vpn_rotator import rotate_vpn_ip, get_current_ip
 from webapp.app import create_app
 
 logging.basicConfig(
@@ -95,34 +96,46 @@ def main():
 
                 # Calculate wait time
                 if was_blocked:
-                    # If blocked, wait a few minutes then restart container for fresh start
-                    wait_time = random.randint(240, 360)  # 4-6 minutes
-                    logger.warning(
-                        f"BLOCKED DETECTED! Waiting {wait_time} seconds ({wait_time//60} minutes) then restarting container for fresh start..."
-                    )
-                    
-                    # Wait the cooldown period
+                    logger.warning("BLOCKED DETECTED! Attempting VPN IP rotation...")
+
+                    # Clean up all browser sessions first
+                    try:
+                        cleanup_all_drivers()
+                    except Exception as e:
+                        logger.warning(f"Error during cleanup: {e}")
+
+                    # Brief cooldown before rotating
+                    cooldown = random.randint(30, 60)
+                    logger.info(f"Waiting {cooldown}s cooldown before rotating IP...")
+                    for _ in range(cooldown):
+                        if not running:
+                            break
+                        time.sleep(1)
+
                     if running:
-                        for _ in range(wait_time):
-                            if not running:
-                                break
-                            time.sleep(1)
-                    
-                    # Clean up all browser sessions before restart
-                    if running:
-                        logger.info("Cleaning up all browser sessions before restart...")
-                        try:
-                            cleanup_all_drivers()
-                        except Exception as e:
-                            logger.warning(f"Error during cleanup: {e}")
-                    
-                    # Exit to trigger Docker restart (restart: always in docker-compose)
-                    if running:
-                        logger.info("Exiting to trigger container restart for fresh start...")
-                        sys.exit(1)  # Exit with error code to ensure restart
+                        old_ip = get_current_ip()
+                        new_ip = rotate_vpn_ip()
+
+                        if new_ip and new_ip != old_ip:
+                            logger.info(
+                                f"IP rotated successfully: {old_ip} -> {new_ip}"
+                            )
+                            # Wait a bit more after rotation for network to stabilize
+                            wait_time = random.randint(60, 90)
+                            logger.info(
+                                f"Waiting {wait_time}s for network to stabilize before resuming..."
+                            )
+                        else:
+                            # Rotation failed - fall back to container restart
+                            logger.error(
+                                f"IP rotation failed (old={old_ip}, new={new_ip}). Restarting container..."
+                            )
+                            sys.exit(1)
                 else:
                     # Normal operation - check with jitter
-                    wait_time = BASE_INTERVAL + random.randint(10, 30)  # 120-150 seconds
+                    wait_time = BASE_INTERVAL + random.randint(
+                        10, 30
+                    )  # 120-150 seconds
 
                 if running:
                     logger.info(f"Waiting {wait_time} seconds before next cycle...")

@@ -69,6 +69,7 @@ services:
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
       - DNS_ADDRESS=10.64.0.1
+      - SERVER_COUNTRIES=USA
     restart: always
 
   nginx:

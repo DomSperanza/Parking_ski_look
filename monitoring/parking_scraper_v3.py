@@ -55,6 +55,12 @@ from config.database import (
 from webapp.app import send_notification_email
 from flask import current_app
 
+# Import VPN rotator for IP logging on blocks
+try:
+    from monitoring.vpn_rotator import get_current_ip as _get_vpn_ip
+except ImportError:
+    _get_vpn_ip = lambda: None
+
 logger = logging.getLogger(__name__)
 
 # Green color for available dates (from HTML examples)
@@ -926,6 +932,8 @@ def check_monitoring_jobs():
 
         if any(r == "blocked" for r in results.values()):
             was_blocked = True
+            current_ip = _get_vpn_ip()
+            logger.warning(f"BLOCKED on IP: {current_ip}")
             # Clean up driver and profile for this resort when blocked to prevent fingerprint tracking
             cleanup_driver(resort_url, clear_profile=True)
 
