@@ -713,10 +713,13 @@ def get_or_create_driver(resort_url):
         f"Creating NEW shared browser session (will be reused for {resort_url})"
     )
 
-    # Clear any existing profiles to ensure clean start
-    # cleanup_driver(SHARED_KEY, clear_profile=False)
+    # Use a RANDOM profile name for each new driver instance
+    # This ensures that if we kill the driver (e.g. on blocking), we get a fresh profile next time
+    import uuid
 
-    driver = get_driver(headless=False, profile_name="shared_monitor")
+    random_profile = f"profile_{uuid.uuid4().hex[:8]}"
+
+    driver = get_driver(headless=False, profile_name=random_profile)
     _resort_drivers[SHARED_KEY] = driver
     return driver, True
 
