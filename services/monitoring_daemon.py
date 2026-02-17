@@ -65,8 +65,8 @@ def main():
     # Create app for context
     app = create_app()
 
-    # Base interval (in seconds) - balanced checking rate
-    BASE_INTERVAL = 120  # 2 minutes base
+    # Base interval (in seconds) - aggressive checking rate
+    BASE_INTERVAL = 20  # 20 seconds base
 
     try:
         with app.app_context():
@@ -133,9 +133,7 @@ def main():
                             sys.exit(1)
                 else:
                     # Normal operation - check with jitter
-                    wait_time = BASE_INTERVAL + random.randint(
-                        10, 30
-                    )  # 120-150 seconds
+                    wait_time = BASE_INTERVAL + random.randint(5, 10)  # 25-30 seconds
 
                 if running:
                     logger.info(f"Waiting {wait_time} seconds before next cycle...")
