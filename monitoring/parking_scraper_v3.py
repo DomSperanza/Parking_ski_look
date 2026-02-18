@@ -51,8 +51,10 @@ from config.database import (
     check_recent_notification,
     log_check_result,
     mark_job_notified,
+    delete_monitoring_job,
 )
 from webapp.app import send_notification_email
+from webapp.services.email_service import send_no_reservation_email
 from flask import current_app
 
 # Import VPN rotator for IP logging on blocks
@@ -589,6 +591,9 @@ def scan_html_for_dates(html_content, date_list, console_logs=None):
             logger.info(f"Found style for {date_str} (via HTML scan): {style_attr}")
             if is_green(style_attr):
                 results[date_str] = "green"
+            elif not style_attr or "background-color" not in style_attr.lower():
+                # No background styling = date does not require a parking reservation
+                results[date_str] = "no_reservation"
             else:
                 results[date_str] = "red"
         else:
@@ -940,7 +945,10 @@ def check_monitoring_jobs():
         # Log check result
         status = (
             "success"
-            if any(r != "blank" and r != "blocked" for r in results.values())
+            if any(
+                r not in ("blank", "blocked", "no_reservation")
+                for r in results.values()
+            )
             else "failed"
         )
         availability_found = any(r == "green" for r in results.values())
@@ -983,6 +991,8 @@ def check_monitoring_jobs():
                     logger.error(
                         f"Failed to send email to {job['email']}: {e}", exc_info=True
                     )
+            elif result == "no_reservation":
+                logger.info(f"No reservation required: {resort_name} on {target_date}")
             elif result == "red":
                 logger.debug(f"Not available: {resort_name} on {target_date}")
             elif result == "blocked":
@@ -991,6 +1001,50 @@ def check_monitoring_jobs():
                 logger.warning(
                     f"Could not check status: {resort_name} on {target_date}"
                 )
+
+        # Handle no-reservation dates: group by user, send one email per user, delete jobs
+        no_res_by_user = (
+            {}
+        )  # {email: {"user_id": ..., "dates": [...], "job_ids": [...]}}
+        for job in data["jobs"]:
+            if results.get(job["target_date"]) == "no_reservation":
+                email = job["email"]
+                if email not in no_res_by_user:
+                    no_res_by_user[email] = {
+                        "user_id": job["user_id"],
+                        "dates": [],
+                        "job_ids": [],
+                    }
+                no_res_by_user[email]["dates"].append(job["target_date"])
+                no_res_by_user[email]["job_ids"].append(job["job_id"])
+
+        for email, info in no_res_by_user.items():
+            try:
+                logger.info(
+                    f"Sending no-reservation email to {email} for dates: {info['dates']}"
+                )
+                sent = send_no_reservation_email(
+                    email, resort_name, info["dates"], resort_url=resort_url
+                )
+                if sent:
+                    logger.info(f"No-reservation email sent to {email}")
+                else:
+                    logger.error(
+                        f"send_no_reservation_email returned False for {email}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Failed to send no-reservation email to {email}: {e}",
+                    exc_info=True,
+                )
+
+            # Delete the jobs regardless of email success so we stop cycling
+            for job_id in info["job_ids"]:
+                try:
+                    delete_monitoring_job(job_id, info["user_id"])
+                    logger.info(f"Deleted no-reservation job {job_id} for {email}")
+                except Exception as e:
+                    logger.error(f"Failed to delete no-reservation job {job_id}: {e}")
 
         # Proactively clean up driver after each resort check to ensure fresh session next time
         # This prevents "Connection refused" errors from stale drivers
