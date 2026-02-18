@@ -53,8 +53,7 @@ from config.database import (
     mark_job_notified,
     delete_monitoring_job,
 )
-from webapp.app import send_notification_email
-from webapp.services.email_service import send_no_reservation_email
+from webapp.app import send_notification_email, send_no_reservation_email
 from flask import current_app
 
 # Import VPN rotator for IP logging on blocks
@@ -1024,27 +1023,34 @@ def check_monitoring_jobs():
                     f"Sending no-reservation email to {email} for dates: {info['dates']}"
                 )
                 sent = send_no_reservation_email(
-                    email, resort_name, info["dates"], resort_url=resort_url
+                    current_app._get_current_object(),
+                    email,
+                    resort_name,
+                    info["dates"],
+                    resort_url=resort_url,
                 )
                 if sent:
                     logger.info(f"No-reservation email sent to {email}")
+                    # Only delete jobs after successful email
+                    for job_id in info["job_ids"]:
+                        try:
+                            delete_monitoring_job(job_id, info["user_id"])
+                            logger.info(
+                                f"Deleted no-reservation job {job_id} for {email}"
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to delete no-reservation job {job_id}: {e}"
+                            )
                 else:
                     logger.error(
-                        f"send_no_reservation_email returned False for {email}"
+                        f"send_no_reservation_email returned False for {email}, keeping jobs active"
                     )
             except Exception as e:
                 logger.error(
                     f"Failed to send no-reservation email to {email}: {e}",
                     exc_info=True,
                 )
-
-            # Delete the jobs regardless of email success so we stop cycling
-            for job_id in info["job_ids"]:
-                try:
-                    delete_monitoring_job(job_id, info["user_id"])
-                    logger.info(f"Deleted no-reservation job {job_id} for {email}")
-                except Exception as e:
-                    logger.error(f"Failed to delete no-reservation job {job_id}: {e}")
 
         # Proactively clean up driver after each resort check to ensure fresh session next time
         # This prevents "Connection refused" errors from stale drivers

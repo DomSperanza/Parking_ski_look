@@ -660,3 +660,50 @@ def send_notification_email(app, job):
 
     mail.send(msg)
     return True
+
+
+def send_no_reservation_email(app, user_email, resort_name, dates, resort_url=None):
+    """
+    Send email notifying user that selected dates do not require parking reservations.
+    Uses Flask-Mail (same as send_notification_email) for consistent credential handling.
+    """
+    from flask_mail import Message
+
+    base_url = os.environ.get("BASE_URL", "http://localhost:5000")
+
+    # Format dates for display
+    from datetime import datetime as dt
+
+    formatted_dates = []
+    for date in sorted(dates):
+        try:
+            date_obj = dt.strptime(date, "%Y-%m-%d")
+            formatted_dates.append(date_obj.strftime("%A, %B %d, %Y"))
+        except ValueError:
+            formatted_dates.append(date)
+
+    date_list_html = "".join(f"<li>{d}</li>" for d in formatted_dates)
+
+    msg = Message(
+        f"No Reservation Required: {resort_name}",
+        recipients=[user_email],
+    )
+
+    msg.html = f"""
+    <h2>No Parking Reservation Needed</h2>
+    <p>Good news! The following date(s) at <strong>{resort_name}</strong> do <strong>NOT</strong> require a parking reservation:</p>
+    <ul>{date_list_html}</ul>
+    <p>These dates have been removed from your monitoring list since no action is needed.</p>
+    {"<p><a href='" + resort_url + "' style='background-color: #17a2b8; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>View Resort Page</a></p>" if resort_url else ""}
+    <hr>
+    <p>Want to monitor different dates? <a href="{base_url}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Set Up New Alerts</a></p>
+    """
+
+    mail = app.extensions.get("mail")
+    if not mail:
+        from flask_mail import Mail
+
+        mail = Mail(app)
+
+    mail.send(msg)
+    return True
